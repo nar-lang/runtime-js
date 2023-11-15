@@ -1,0 +1,22 @@
+{
+  "name": "oak-runtime-js",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/oaklang/oak-runtime-js.git"
+  },
+  "author": "Sergey Dvoynikov",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/oaklang/oak-runtime-js/issues"
+  },
+  "homepage": "https://github.com/oaklang/oak-runtime-js#readme",
+  "dependencies": {
+    "kaitai-struct": "^0.10.0"
+  }
+}
