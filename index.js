@@ -1,16 +1,24 @@
-import Acorn from "./acorn_debug";
-import KaitaiStream from "kaitai-struct/KaitaiStream";
+"use strict";
 
-class OakRuntime {
+import Acorn from "./acorn.js";
+import KaitaiStream from "./KaitaiStream.js";
+
+export default class OakRuntime {
     /**
-     * @param {{[String]: function}} externals Map of external defined functions
      * @param {ArrayBuffer} arrayBuffer ArrayBuffer to read acorn from.
      * @param {?Number} arrayBufferOffset Offset from arrayBuffer beginning.
      */
-    constructor(externals, arrayBuffer, arrayBufferOffset = 0) {
+    constructor(arrayBuffer, arrayBufferOffset = 0) {
         this._acorn = new Acorn(new KaitaiStream(arrayBuffer, arrayBufferOffset));
-        this._externals = Object.assign({}, externals);
+        this._externals = {};
         this._cachedExpressions = {};
+        this._True = this.option(this.qualifierIdentifier("Oak.Core.Basics", "Bool"), "True");
+        this._False = this.option(this.qualifierIdentifier("Oak.Core.Basics", "Bool"), "False");
+        this._closureIndex = 0n;
+        this._exportsMap = this._acorn.exports.reduce((acc, x) => {
+            acc[x.name.value] = x.address;
+            return acc;
+        }, {});
     }
 
     externalSelfContext = {}
@@ -27,8 +35,18 @@ class OakRuntime {
     INSTANCE_KIND_FUNC = 10
 
     /**
+     * @param {String} moduleName Full module name, e.g. Oak.Core.Basics
+     * @param {{[String]: function}} definitions Map of external defined functions
+     */
+    register(moduleName, definitions) {
+        for (let name in definitions) {
+            this._externals[this.qualifierIdentifier(moduleName, name)] = definitions[name];
+        }
+    }
+
+    /**
      * @param {Number|BigInt|String|Array|{}|null} value
-     * @returns {Readonly<{}>}
+     * @return {Readonly<{}>}
      */
     wrap(value) {
         if (value === null) {
@@ -48,7 +66,7 @@ class OakRuntime {
             return this.record(t);
         }
         if (t === "boolean") {
-            //todo:
+            return value ? this._True : this._False;
         }
         throw "given object cannot be wrapped and used in oak code";
     }
@@ -79,14 +97,20 @@ class OakRuntime {
                 }
                 return rec;
             }
-            default: {
-                return x.value;
+            case this.INSTANCE_KIND_OPTION: {
+                if (x.name === this._True.name) {
+                    return true;
+                }
+                if (x.name === this._False.name) {
+                    return false;
+                }
             }
         }
+        return x.value;
     }
 
     /**
-     * @returns {Readonly<{}>}
+     * @return {Readonly<{}>}
      */
     unit() {
         return Object.freeze({kind: this.INSTANCE_KIND_UNIT, value: null});
@@ -94,7 +118,7 @@ class OakRuntime {
 
     /**
      * @param {Number} value
-     * @returns {Readonly<{}>}
+     * @return {Readonly<{}>}
      */
     char(value) {
         return Object.freeze({kind: this.INSTANCE_KIND_CHAR, value});
@@ -102,7 +126,7 @@ class OakRuntime {
 
     /**
      * @param {BigInt} value
-     * @returns {Readonly<{}>}
+     * @return {Readonly<{}>}
      */
     int(value) {
         return Object.freeze({kind: this.INSTANCE_KIND_INT, value});
@@ -110,7 +134,7 @@ class OakRuntime {
 
     /**
      * @param {Number} value
-     * @returns {Readonly<{}>}
+     * @return {Readonly<{}>}
      */
     float(value) {
         return Object.freeze({kind: this.INSTANCE_KIND_FLOAT, value});
@@ -118,7 +142,7 @@ class OakRuntime {
 
     /**
      * @param {String} value
-     * @returns {Readonly<{}>}
+     * @return {Readonly<{}>}
      */
     string(value) {
         return Object.freeze({kind: this.INSTANCE_KIND_STRING, value});
@@ -126,7 +150,7 @@ class OakRuntime {
 
     /**
      * @param {Object} value
-     * @returns {Readonly<{}>}
+     * @return {Readonly<{}>}
      */
     record(value) {
         let rec = undefined;
@@ -141,6 +165,7 @@ class OakRuntime {
 
     /**
      * @param {Array<Readonly<{}>>} value
+     * @return {Readonly<{}>}
      */
     list(value) {
         let list = undefined;
@@ -155,38 +180,60 @@ class OakRuntime {
 
     /**
      * @param {Array<Readonly<{}>>} value
+     * @return {Readonly<{}>}
      */
     tuple(value) {
         return Object.freeze({kind: this.INSTANCE_KIND_TUPLE, value: Object.freeze(value)});
     }
 
     /**
-     * @param {String} name
-     * @param {Array<Readonly<{}>>} values
+     * @param {String} qualifiedIdentifier data type name
+     * @param {String} name option name
+     * @param {Array<Readonly<{}>>?} values option type arguments
+     * @return {Readonly<{}>}
      */
-    option(name, values) {
-        return Object.freeze({kind: this.INSTANCE_KIND_OPTION, name, values: Object.freeze(values)});
+    option(qualifiedIdentifier, name, values) {
+        return Object.freeze({
+            kind: this.INSTANCE_KIND_OPTION,
+            name: `${qualifiedIdentifier}#${name}`,
+            values: Object.freeze(values)
+        });
+    }
+
+    bool(value) {
+        return value ? this._True : this._False;
     }
 
     /**
      * Returns qualifier definition identifier to use in execute method
      * @param {String} module Full module name, like `Oak.Core.Basics`
      * @param {String} definition Definition name, like `identity`
-     * @returns {String}
+     * @return {String}
      */
-    makeName(module, definition) {
+    qualifierIdentifier(module, definition) {
         return `${module}:${definition}`;
     }
 
+    /**
+     * Executes function
+     * @param {String} qualifiedIdentifier
+     * @param  {Array<Readonly<{}>>} args
+     * @return {Readonly<{}>}
+     */
     execute(qualifiedIdentifier, ...args) {
-        const fnIndex = this._acorn.exports[name];
+        const fnIndex = this._exportsMap[qualifiedIdentifier];
         if (fnIndex === undefined) {
-            console.error(`[oak] Definition '${name}' is not exported by loaded binary`)
+            console.error(`[oak] Definition '${qualifiedIdentifier}' is not exported by loaded binary`)
         }
 
         const objectStack = args.slice();
         this._executeFn(this._acorn.funcs[fnIndex], objectStack, [], {});
         return objectStack.pop();
+    }
+
+    executeFn(fn, args) {
+        this._executeFn(fn, args, [], {});
+        return args.pop();
     }
 
     _executeFn(fn, objectStack, patternStack, parentLocals) {
@@ -196,19 +243,18 @@ class OakRuntime {
             const op = fn.ops[index];
             switch (op.kind) {
                 case Acorn.OpKind.LOAD_LOCAL: {
-                    const name = this._acorn.strings[op.aStringHash];
+                    const name = this._acorn.strings[op.aStringHash].value;
                     const local = locals[name];
                     objectStack.push(local);
                     break
                 }
                 case Acorn.OpKind.LOAD_GLOBAL: {
-                    const name = this._acorn.strings[op.aStringHash];
-                    const fn = this._acorn.funcs[name];
+                    const fn = this._acorn.funcs[op.aPointer];
                     if (fn.numArgs === 0) {
-                        const c = this._cachedExpressions[name];
+                        const c = this._cachedExpressions[op.aPointer];
                         if (c === undefined) {
                             this._executeFn(fn, objectStack, patternStack, undefined);
-                            this._cachedExpressions[name] = objectStack[objectStack.length - 1];
+                            this._cachedExpressions[op.aPointer] = objectStack[objectStack.length - 1];
                         } else {
                             objectStack.push(c);
                         }
@@ -249,7 +295,7 @@ class OakRuntime {
                             break
                         }
                         case Acorn.ConstKind.STRING: {
-                            const c = this._acorn.strings[op.aConstPointerValueHash];
+                            const c = this._acorn.strings[op.aConstPointerValueHash].value;
                             stack.push(this.string(c));
                             break
                         }
@@ -257,7 +303,7 @@ class OakRuntime {
                     break
                 }
                 case Acorn.OpKind.UNLOAD_LOCAL: {
-                    const name = this._acorn.strings[op.aStringHash];
+                    const name = this._acorn.strings[op.aStringHash].value;
                     locals[name] = objectStack.pop();
                     break
                 }
@@ -265,33 +311,31 @@ class OakRuntime {
                     const fn = objectStack.pop();
                     const n = op.bNumArgs;
                     const start = objectStack.length - n;
-                    const args = objectStack.slice(start);
-                    objectStack.splice(start);
-
                     const numCurriedArgs = fn.curriedArgs === undefined ? 0 : fn.curriedArgs.length;
-                    if (fn.numArgs - numCurriedArgs === n) {
-                        objectStack.push(...fn.curriedArgs);
-                        objectStack.push(...args);
+                    if ((numCurriedArgs > 0) && (fn.numArgs - numCurriedArgs === n)) {
+                        objectStack.splice(start, 0, ...fn.curriedArgs);
                         this._executeFn(fn, objectStack, patternStack, fn.locals || locals);
-                    } else { //currying
+                    } else if (fn.numArgs === n) {
+                        this._executeFn(fn, objectStack, patternStack, fn.locals || locals);
+                    } else {
+                        const args = objectStack.slice(start);
+                        objectStack.splice(start);
                         let curried = Object.freeze(
                             Object.create({
+                                kind: this.INSTANCE_KIND_FUNC,
                                 curriedArgs: numCurriedArgs === 0 ? args : numCurriedArgs.concat(args),
                                 locals: locals,
+                                index: ++this._closureIndex,
                             }, fn));
                         objectStack.push(curried);
                     }
                     break
                 }
                 case Acorn.OpKind.CALL: {
-                    const name = this._acorn.strings[op.aStringHash];
+                    const name = this._acorn.strings[op.aStringHash].value;
                     const n = objectStack.length;
-                    const start = n - op.aNumItems;
-                    let args = [];
-                    for (let i = n - 1; i >= start; i--) {
-                        let arg = objectStack[i];
-                        args.push(arg);
-                    }
+                    const start = n - op.bNumArgs;
+                    let args = objectStack.slice(start);
                     objectStack.splice(start);
                     const fn = this._externals[name];
                     let result = fn.apply(this.externalSelfContext, args);
@@ -299,7 +343,7 @@ class OakRuntime {
                     break
                 }
                 case Acorn.OpKind.MATCH: {
-                    if (!this._match(patternStack, objectStack, locals)) {
+                    if (!this._match(patternStack.pop(), objectStack.pop(), locals)) {
                         index += op.aJumpDelta;
                     }
                     break
@@ -365,7 +409,7 @@ class OakRuntime {
                     let items = undefined;
                     switch (op.bPatternKind) {
                         case Acorn.PatternKind.ALIAS: {
-                            name = this._acorn.strigns[op.aStringHash];
+                            name = this._acorn.strings[op.aStringHash].value;
                             items = [patternStack.pop()];
                             break;
                         }
@@ -381,7 +425,7 @@ class OakRuntime {
                             break;
                         }
                         case Acorn.PatternKind.DATA_OPTION: {
-                            name = this._acorn.strigns[op.aStringHash];
+                            name = this._acorn.strings[op.aStringHash].value;
                             const n = op.cNumNested;
                             const start = patternStack.length - n;
                             items = patternStack.slice(start);
@@ -396,7 +440,7 @@ class OakRuntime {
                             break;
                         }
                         case Acorn.PatternKind.NAMED: {
-                            name = this._acorn.strigns[op.aStringHash];
+                            name = this._acorn.strings[op.aStringHash].value;
                             break;
                         }
                         case Acorn.PatternKind.RECORD: {
@@ -420,7 +464,7 @@ class OakRuntime {
                 }
                 case Acorn.OpKind.ACCESS: {
                     const rec = objectStack.pop();
-                    const name = this._acorn.strings[op.aStringHash];
+                    const name = this._acorn.strings[op.aStringHash].value;
                     const field = this._getField(rec, name);
                     objectStack.push(field);
                     break
@@ -428,7 +472,7 @@ class OakRuntime {
                 case Acorn.OpKind.UPDATE: {
                     const value = objectStack.pop();
                     const rec = objectStack.pop();
-                    const name = this._acorn.strings[op.aStringHash];
+                    const name = this._acorn.strings[op.aStringHash].value;
                     const updated = this._recordFiled(name, value, rec);
                     objectStack.push(updated);
                     break
