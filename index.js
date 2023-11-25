@@ -211,7 +211,7 @@ export default class OakRuntime {
      * @return {String}
      */
     qualifierIdentifier(module, definition) {
-        return `${module}:${definition}`;
+        return `${module}.${definition}`;
     }
 
     /**
