@@ -617,7 +617,7 @@ KaitaiStream.bytesToStr = function(arr, encoding) {
         default:
           // unsupported encoding, we'll have to resort to iconv-lite
           if (typeof KaitaiStream.iconvlite === 'undefined')
-            KaitaiStream.iconvlite = require('iconv-lite');
+            //KaitaiStream.iconvlite = require('iconv-lite');
 
           return KaitaiStream.iconvlite.decode(arr, encoding);
       }
