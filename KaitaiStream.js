@@ -669,7 +669,7 @@ KaitaiStream.processZlib = function(buf) {
   if (typeof require !== 'undefined')  {
     // require is available - we're running under node
     if (typeof KaitaiStream.zlib === 'undefined')
-      KaitaiStream.zlib = require('zlib');
+      //KaitaiStream.zlib = require('zlib');
     // use node's zlib module API
     var r = KaitaiStream.zlib.inflateSync(
       Buffer.from(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength))
