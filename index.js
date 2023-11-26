@@ -255,7 +255,7 @@ export default class OakRuntime {
                     if (fn.numArgs === 0) {
                         const c = this._cachedExpressions[op.aPointer];
                         if (c === undefined) {
-                            this._executeFn(fn, objectStack, patternStack, undefined);
+                            this._executeFn(fn, objectStack, patternStack, {});
                             this._cachedExpressions[op.aPointer] = objectStack[objectStack.length - 1];
                         } else {
                             objectStack.push(c);
