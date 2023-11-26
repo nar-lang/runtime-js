@@ -239,7 +239,7 @@ export default class OakRuntime {
     }
 
     _executeFn(fn, objectStack, patternStack, parentLocals) {
-        let locals = Object.create({}, parentLocals);
+        let locals = Object.create(parentLocals);
         let index = 0;
         while (index < fn.ops.length) {
             const op = fn.ops[index];
@@ -323,12 +323,12 @@ export default class OakRuntime {
                         const args = objectStack.slice(start);
                         objectStack.splice(start);
                         let curried = Object.freeze(
-                            Object.create({
+                            Object.create(fn, {
                                 kind: OakRuntime.INSTANCE_KIND_FUNC,
                                 curriedArgs: numCurriedArgs === 0 ? args : numCurriedArgs.concat(args),
                                 locals: locals,
                                 index: ++this._closureIndex,
-                            }, fn));
+                            }));
                         objectStack.push(curried);
                     }
                     break
