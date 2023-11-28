@@ -51,7 +51,7 @@ export default class OakRuntime {
     }
 
     /**
-     * @param {Number|BigInt|String|Array|{}|null} value
+     * @param {Number|String|Array|{}|null} value
      * @return {Readonly<{}>}
      */
     wrap(value) {
@@ -65,14 +65,14 @@ export default class OakRuntime {
         if (t === "number") {
             return this.float(value);
         }
-        if (t === "bigint") {
-            return this.int(value);
-        }
         if (t === "object") {
             return this.record(t);
         }
         if (t === "boolean") {
             return value ? this._True : this._False;
+        }
+        if (t === "stirng")  {
+            return this.string(value);
         }
         throw "given object cannot be wrapped and used in oak code";
     }
@@ -93,7 +93,7 @@ export default class OakRuntime {
                 return result.map(unwrap);
             }
             case this.INSTANCE_KIND_RECORD: {
-                Object.keys(result).reduce((acc, k) => {
+                return Object.keys(result).reduce((acc, k) => {
                     acc[k] = this.unwrap(result[k]);
                     return acc;
                 }, {});
@@ -117,10 +117,11 @@ export default class OakRuntime {
             case this.INSTANCE_KIND_RECORD: {
                 let field = x;
                 let rec = {};
-                while (field !== undefined && field.name !== undefined) {
+                while (field !== undefined && field.key !== undefined) {
                     if (rec[field.key] === undefined) {
                         rec[field.key] = field.value;
                     }
+                    field = field.parent;
                 }
                 return rec;
             }
@@ -158,13 +159,13 @@ export default class OakRuntime {
     }
 
     /**
-     * @param {BigInt} value
+     * @param {Number} value
      * @return {Readonly<{}>}
      */
     int(value) {
         if ($DEBUG) {
-            if (typeof (value) !== "bigint") {
-                console.error(`[oak:debug] Int value is not bigint`);
+            if (typeof (value) !== "number") {
+                console.error(`[oak:debug] Int value is not number`);
             }
         }
         return Object.freeze({kind: this.INSTANCE_KIND_INT, value});
@@ -380,7 +381,7 @@ export default class OakRuntime {
                         }
                         case Acorn.ConstKind.INT: {
                             const c = this._acorn.consts[op.aConstPointerValueHash];
-                            stack.push(this.int(BigInt(c.intValue))); //TODO: should be correct while parsing
+                            stack.push(this.int(c.intValue));
                             break
                         }
                         case Acorn.ConstKind.FLOAT: {
