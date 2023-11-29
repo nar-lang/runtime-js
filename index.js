@@ -814,7 +814,7 @@ export default class OakRuntime {
         if (rec === undefined) {
             return undefined;
         }
-        if (fieldName === rec.fieldName) {
+        if (fieldName === rec.key) {
             return rec.value;
         }
         return this._getField(rec.parent, fieldName);
