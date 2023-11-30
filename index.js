@@ -71,7 +71,7 @@ export default class OakRuntime {
         if (t === "boolean") {
             return value ? this._True : this._False;
         }
-        if (t === "stirng")  {
+        if (t === "stirng") {
             return this.string(value);
         }
         throw "given object cannot be wrapped and used in oak code";
@@ -821,6 +821,10 @@ export default class OakRuntime {
     }
 
     _constEqual(a, b) {
-        return a.kind === b.kind && a.value === b.value;
+        return a.value === b.value &&
+            (a.kind === b.kind ||
+                (a.kind === this.INSTANCE_KIND_INT && b.kind === this.INSTANCE_KIND_FLOAT) ||
+                (a.kind === this.INSTANCE_KIND_FLOAT && b.kind === this.INSTANCE_KIND_INT)
+            );
     }
 }
