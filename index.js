@@ -66,13 +66,16 @@ export default class OakRuntime {
             return this.float(value);
         }
         if (t === "object") {
-            return this.record(t);
+            return this.record(value);
         }
         if (t === "boolean") {
             return value ? this._True : this._False;
         }
         if (t === "stirng") {
             return this.string(value);
+        }
+        if (isNaN(value)) {
+            return this.float(value)
         }
         throw "given object cannot be wrapped and used in oak code";
     }
@@ -303,8 +306,45 @@ export default class OakRuntime {
     }
 
     executeFn(fn, args) {
-        this._executeFn(fn, args, []);
-        return args.pop();
+        if (fn.curriedFn)  {
+            const numCurriedArgs = fn.curriedArgs && fn.curriedArgs.length || 0;
+            const requiredArgs = fn.numArgs - numCurriedArgs;
+            if (requiredArgs === args.length) {
+                const stack = fn.curriedArgs.concat(args);
+                this._executeFn(fn.curriedFn, stack, []);
+                return stack.pop();
+            } else if (requiredArgs > args.length) {
+                return Object.freeze({
+                    curriedFn: fn.curriedFn,
+                    numArgs: fn.numArgs,
+                    kind: this.INSTANCE_KIND_FUNC,
+                    curriedArgs: fn.curriedArgs.concat(args),
+                    index: ++this._closureIndex,
+                });
+            } else {
+                const topArgs = args.slice(0, requiredArgs);
+                const stack = fn.curriedArgs.concat(topArgs);
+                this._executeFn(fn.curriedFn, stack, []);
+                return this.executeFn(stack.pop(), args.slice(requiredArgs));
+            }
+        } else {
+            if (fn.numArgs === args.length) {
+                this._executeFn(fn, args, []);
+                return args.pop();
+            } else if (fn.numArgs > args.length) {
+                return Object.freeze({
+                    curriedFn: fn,
+                    numArgs: fn.numArgs,
+                    kind: this.INSTANCE_KIND_FUNC,
+                    curriedArgs: args,
+                    index: ++this._closureIndex,
+                });
+            } else {
+                const stack = args.slice(0, fn.numArgs);
+                this._executeFn(fn, stack, []);
+                return this.executeFn(stack.pop(), args.slice(fn.numArgs));
+            }
+        }
     }
 
     _executeFn(fn, objectStack, patternStack) {
@@ -406,7 +446,7 @@ export default class OakRuntime {
                     const afn = objectStack.pop();
                     const n = op.bNumArgs;
                     const start = objectStack.length - n;
-                    const numCurriedArgs = afn.curriedArgs === undefined ? 0 : afn.curriedArgs.length;
+                    const numCurriedArgs = afn.curriedArgs && afn.curriedArgs.length || 0;
                     if ((numCurriedArgs > 0) && (afn.numArgs - numCurriedArgs === n)) {
                         objectStack.splice(start, 0, ...afn.curriedArgs);
                         this._executeFn(afn.curriedFn, objectStack, patternStack);
