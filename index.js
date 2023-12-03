@@ -306,7 +306,7 @@ export default class OakRuntime {
     }
 
     executeFn(fn, args) {
-        if (fn.curriedFn)  {
+        if (fn.curriedFn) {
             const numCurriedArgs = fn.curriedArgs && fn.curriedArgs.length || 0;
             const requiredArgs = fn.numArgs - numCurriedArgs;
             if (requiredArgs === args.length) {
@@ -556,15 +556,25 @@ export default class OakRuntime {
                                     console.error(`[oak:debug] Stack is not big enough to make record with ${op.aNumItems} items`);
                                 }
                             }
-                            const n = op.aNumItems;
-                            let rec = undefined;
-                            for (let i = 0; i < n; i++) {
-                                const objName = objectStack.pop();
-                                const name = this.unwrap(objName);
-                                const value = objectStack.pop();
-                                rec = this._recordFiled(name, value, rec);
+                            if (0 === op.aNumItems) {
+                                objectStack.push(this._recordFiled());
+                            } else {
+                                const n = objectStack.length;
+                                if ($DEBUG) {
+                                    if (n < op.aNumItems * 2) {
+                                        console.error(`[oak:debug] Stack is not big enough to make record with ${op.aNumItems} fields`);
+                                    }
+                                }
+
+                                let rec = undefined;
+                                for (let i = 0; i < op.aNumItems; i++) {
+                                    const objName = objectStack.pop();
+                                    const name = this.unwrap(objName);
+                                    const value = objectStack.pop();
+                                    rec = this._recordFiled(name, value, rec);
+                                }
+                                objectStack.push(rec);
                             }
-                            objectStack.push(rec);
                             break
                         }
                         case Acorn.ObjectKind.DATA: {
