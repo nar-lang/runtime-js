@@ -20,25 +20,21 @@ export default class OakRuntime {
             return acc;
         }, {});
         for (let fn of this._acorn.funcs) {
-            fn.kind = this.INSTANCE_KIND_FUNC;
+            fn.kind = INSTANCE_KIND_FUNC;
         }
+        this.externalSelfContext = this;
     }
 
-    externalSelfContext = {}
-
-    INSTANCE_KIND_UNIT = 1
-    INSTANCE_KIND_CHAR = 2
-    INSTANCE_KIND_INT = 3
-    INSTANCE_KIND_FLOAT = 4
-    INSTANCE_KIND_STRING = 5
-    INSTANCE_KIND_RECORD = 6
-    INSTANCE_KIND_TUPLE = 7
-    INSTANCE_KIND_LIST = 8
-    INSTANCE_KIND_OPTION = 9
-    INSTANCE_KIND_FUNC = 10
-
-    _True = this.option(this.qualifierIdentifier("Oak.Core.Basics", "Bool"), "True");
-    _False = this.option(this.qualifierIdentifier("Oak.Core.Basics", "Bool"), "False");
+    INSTANCE_KIND_UNIT = INSTANCE_KIND_UNIT
+    INSTANCE_KIND_CHAR = INSTANCE_KIND_CHAR
+    INSTANCE_KIND_INT = INSTANCE_KIND_INT
+    INSTANCE_KIND_FLOAT = INSTANCE_KIND_FLOAT
+    INSTANCE_KIND_STRING = INSTANCE_KIND_STRING
+    INSTANCE_KIND_RECORD = INSTANCE_KIND_RECORD
+    INSTANCE_KIND_TUPLE = INSTANCE_KIND_TUPLE
+    INSTANCE_KIND_LIST = INSTANCE_KIND_LIST
+    INSTANCE_KIND_OPTION = INSTANCE_KIND_OPTION
+    INSTANCE_KIND_FUNC = INSTANCE_KIND_FUNC
 
     /**
      * @param {String} moduleName Full module name, e.g. Oak.Core.Basics
@@ -54,204 +50,65 @@ export default class OakRuntime {
      * @param {Number|String|Array|{}|null} value
      * @return {Readonly<{}>}
      */
-    wrap(value) {
-        if (value === null) {
-            return this.unit()
-        }
-        if (Array.isArray(value)) {
-            return this.list(value);
-        }
-        let t = typeof value;
-        if (t === "number") {
-            return this.float(value);
-        }
-        if (t === "object") {
-            return this.record(value);
-        }
-        if (t === "boolean") {
-            return value ? this._True : this._False;
-        }
-        if (t === "stirng") {
-            return this.string(value);
-        }
-        if (isNaN(value)) {
-            return this.float(value)
-        }
-        throw "given object cannot be wrapped and used in oak code";
-    }
+    wrap = wrap
 
     /**
      * @param {Readonly<{}>} x
      * @return {Number|String|Array|{}|null}
      */
-    unwrap(x) {
-        const result = this.unwrapShallow(x);
-        const unwrap = this.unwrap.bind(this);
+    unwrap = unwrap
 
-        switch (x.kind) {
-            case this.INSTANCE_KIND_LIST: {
-                return result.map(unwrap);
-            }
-            case this.INSTANCE_KIND_TUPLE: {
-                return result.map(unwrap);
-            }
-            case this.INSTANCE_KIND_RECORD: {
-                return Object.keys(result).reduce((acc, k) => {
-                    acc[k] = this.unwrap(result[k]);
-                    return acc;
-                }, {});
-            }
-        }
-        return result;
-    }
-
-    unwrapShallow(x) {
-        switch (x.kind) {
-            case this.INSTANCE_KIND_LIST: {
-                let head = x;
-                let list = [];
-                while (head !== undefined && head.value !== undefined) {
-                    list.push(head.value);
-                    head = head.next;
-                }
-
-                return list;
-            }
-            case this.INSTANCE_KIND_RECORD: {
-                let field = x;
-                let rec = {};
-                while (field !== undefined && field.key !== undefined) {
-                    if (rec[field.key] === undefined) {
-                        rec[field.key] = field.value;
-                    }
-                    field = field.parent;
-                }
-                return rec;
-            }
-            case this.INSTANCE_KIND_OPTION: {
-                if (x.name === this._True.name) {
-                    return true;
-                }
-                if (x.name === this._False.name) {
-                    return false;
-                }
-                return `${x.name}[${x.values.map(this.unwrap.bind(this)).join(", ")}]`;
-            }
-        }
-        return x.value;
-    }
+    unwrapShallow = unwrapShallow
 
     /**
      * @return {Readonly<{}>}
      */
-    unit() {
-        return Object.freeze({kind: this.INSTANCE_KIND_UNIT, value: null});
-    }
+    unit = unit
 
     /**
      * @param {Number} value
      * @return {Readonly<{}>}
      */
-    char(value) {
-        if ($DEBUG) {
-            if (typeof (value) !== "number") {
-                console.error(`[oak:debug] Char value is not number`);
-            }
-        }
-        return Object.freeze({kind: this.INSTANCE_KIND_CHAR, value});
-    }
+    char = char
 
     /**
      * @param {Number} value
      * @return {Readonly<{}>}
      */
-    int(value) {
-        if ($DEBUG) {
-            if (typeof (value) !== "number") {
-                console.error(`[oak:debug] Int value is not number`);
-            }
-        }
-        return Object.freeze({kind: this.INSTANCE_KIND_INT, value});
-    }
+    int = int
 
     /**
      * @param {Number} value
      * @return {Readonly<{}>}
      */
-    float(value) {
-        if ($DEBUG) {
-            if (typeof (value) !== "number") {
-                console.error(`[oak:debug] Float value is not number`);
-            }
-        }
-        return Object.freeze({kind: this.INSTANCE_KIND_FLOAT, value});
-    }
+    float = float
 
     /**
      * @param {String} value
      * @return {Readonly<{}>}
      */
-    string(value) {
-        if ($DEBUG) {
-            if (typeof (value) !== "string") {
-                console.error(`[oak:debug] String value is not string`);
-            }
-        }
-        return Object.freeze({kind: this.INSTANCE_KIND_STRING, value});
-    }
+    string = string
 
     /**
      * @param {Object} value
      * @return {Readonly<{}>}
      */
-    record(value) {
-        return this.recordShallow(Object.keys(value).reduce((acc, k) => {
-            acc[k] = this.wrap(value[k]);
-            return acc;
-        }, {}));
-    }
-
-    recordShallow(value) {
-        let rec = undefined;
-        for (const n in value) {
-            rec = this._recordFiled(n, value[n], rec);
-        }
-        if (rec === undefined) {
-            rec = this._recordFiled();
-        }
-        return rec;
-    }
+    record = record
+    recordShallow = recordShallow
 
     /**
      * @param {Array<Readonly<{}>>} value
      * @return {Readonly<{}>}
      */
-    list(value) {
-        return this.listShallow(value.map(this.wrap.bind(this)));
-    }
-
-    listShallow(value) {
-        let list = undefined;
-        for (let i = value.length - 1; i >= 0; i--) {
-            list = this._listItem(value[i], list);
-        }
-        if (list === undefined) {
-            list = this._listItem();
-        }
-        return list;
-    }
+    list = list
+    listShallow = listShallow
 
     /**
      * @param {Array<Readonly<{}>>} value
      * @return {Readonly<{}>}
      */
-    tuple(value) {
-        return this.tupleShallow(value.map(this.wrap.bind(this)));
-    }
-
-    tupleShallow(value) {
-        return Object.freeze({kind: this.INSTANCE_KIND_TUPLE, value: Object.freeze(value)});
-    }
+    tuple = tuple
+    tupleShallow = tupleShallow
 
     /**
      * @param {String} qualifiedIdentifier data type name
@@ -259,17 +116,10 @@ export default class OakRuntime {
      * @param {Array<Readonly<{}>>?} values option type arguments
      * @return {Readonly<{}>}
      */
-    option(qualifiedIdentifier, name, values) {
-        return this.optionShallow(qualifiedIdentifier, name, (values || []).map(this.wrap.bind(this)));
-    }
+    option = option
+    optionShallow = optionShallow
 
-    optionShallow(qualifiedIdentifier, name, values) {
-        return this._option(`${qualifiedIdentifier}#${name}`, values);
-    }
-
-    bool(value) {
-        return value ? this._True : this._False;
-    }
+    bool = bool
 
     /**
      * Returns qualifier definition identifier to use in execute method
@@ -277,9 +127,9 @@ export default class OakRuntime {
      * @param {String} definition Definition name, like `identity`
      * @return {String}
      */
-    qualifierIdentifier(module, definition) {
-        return `${module}.${definition}`;
-    }
+    qualifierIdentifier = qualifierIdentifier
+
+    listItem = listItem
 
     /**
      * Executes function
@@ -519,7 +369,7 @@ export default class OakRuntime {
                     switch (op.bObjectKind) {
                         case Acorn.ObjectKind.LIST: {
                             if (0 === op.aNumItems) {
-                                objectStack.push(this._listItem())
+                                objectStack.push(listItem())
                             } else {
                                 const n = objectStack.length;
                                 if ($DEBUG) {
@@ -530,7 +380,7 @@ export default class OakRuntime {
                                 const start = n - op.aNumItems;
                                 let list = undefined;
                                 for (let i = n - 1; i >= start; i--) {
-                                    list = this._listItem(objectStack[i], list);
+                                    list = listItem(objectStack[i], list);
                                 }
                                 objectStack.splice(start);
                                 objectStack.push(list);
@@ -546,7 +396,7 @@ export default class OakRuntime {
                             const start = objectStack.length - op.aNumItems;
                             const items = objectStack.slice(start);
                             objectStack.splice(start);
-                            const tuple = this.tupleShallow(items);
+                            const tuple = tupleShallow(items);
                             objectStack.push(tuple);
                             break
                         }
@@ -557,7 +407,7 @@ export default class OakRuntime {
                                 }
                             }
                             if (0 === op.aNumItems) {
-                                objectStack.push(this._recordFiled());
+                                objectStack.push(recordFiled());
                             } else {
                                 const n = objectStack.length;
                                 if ($DEBUG) {
@@ -571,7 +421,7 @@ export default class OakRuntime {
                                     const objName = objectStack.pop();
                                     const name = this.unwrap(objName);
                                     const value = objectStack.pop();
-                                    rec = this._recordFiled(name, value, rec);
+                                    rec = recordFiled(name, value, rec);
                                 }
                                 objectStack.push(rec);
                             }
@@ -593,8 +443,8 @@ export default class OakRuntime {
                             }
                             const items = objectStack.slice(start);
                             objectStack.splice(start);
-                            const option = this._option(name, items);
-                            objectStack.push(option);
+                            const opt = optionImpl(name, items);
+                            objectStack.push(opt);
                             break
                         }
                     }
@@ -683,7 +533,7 @@ export default class OakRuntime {
                                     console.error(`[oak:debug] Stack is not big enough to make pattern record with ${n} items`);
                                 }
                             }
-                            items = patternStack.slice(start).map(this.unwrap.bind(this));
+                            items = patternStack.slice(start).map(unwrap);
                             patternStack.splice(start);
                             break;
                         }
@@ -715,7 +565,7 @@ export default class OakRuntime {
                         }
                     }
                     const rec = objectStack.pop();
-                    const field = this._getField(rec, name);
+                    const field = getField(rec, name);
                     objectStack.push(field);
                     break
                 }
@@ -731,7 +581,7 @@ export default class OakRuntime {
                     }
                     const value = objectStack.pop();
                     const rec = objectStack.pop();
-                    const updated = this._recordFiled(name, value, rec);
+                    const updated = recordFiled(name, value, rec);
                     objectStack.push(updated);
                     break
                 }
@@ -778,9 +628,9 @@ export default class OakRuntime {
                         console.error(`[oak:debug] Cons pattern should have exactly two items`);
                     }
                 }
-                let matched = obj.kind === this.INSTANCE_KIND_LIST && obj.value !== undefined;
+                let matched = obj.kind === INSTANCE_KIND_LIST && obj.value !== undefined;
                 matched &= this._match(pattern.items[0], obj.value, locals);
-                matched &= this._match(pattern.items[1], (obj.next === undefined ? this._listItem() : obj.next), locals);
+                matched &= this._match(pattern.items[1], (obj.next === undefined ? listItem() : obj.next), locals);
                 return matched;
             }
             case Acorn.PatternKind.CONST: {
@@ -789,12 +639,12 @@ export default class OakRuntime {
                         console.error(`[oak:debug] Const pattern should have exactly one item`);
                     }
                 }
-                return this._constEqual(obj, pattern.items[0]);
+                return constEqual(obj, pattern.items[0]);
             }
             case Acorn.PatternKind.DATA_OPTION: {
                 const olen = obj.values && obj.values.length || 0;
                 const plen = pattern.items && pattern.items.length || 0;
-                let matched = obj.kind === this.INSTANCE_KIND_OPTION &&
+                let matched = obj.kind === INSTANCE_KIND_OPTION &&
                     obj.name === pattern.name &&
                     olen === plen;
                 for (let i = 0; i < pattern.items.length && matched; i++) {
@@ -803,7 +653,7 @@ export default class OakRuntime {
                 return matched;
             }
             case Acorn.PatternKind.LIST: {
-                let matched = obj.kind === this.INSTANCE_KIND_LIST;
+                let matched = obj.kind === INSTANCE_KIND_LIST;
                 for (let i = 0; i < pattern.items.length && matched; i++) {
                     matched &= obj !== undefined &&
                         obj.value !== undefined &&
@@ -818,10 +668,10 @@ export default class OakRuntime {
                 return true;
             }
             case Acorn.PatternKind.RECORD: {
-                let matched = obj.kind === this.INSTANCE_KIND_RECORD;
+                let matched = obj.kind === INSTANCE_KIND_RECORD;
                 for (let i = 0; i < pattern.items.length && matched; i++) {
                     const name = pattern.items[i];
-                    const field = this._getField(obj,);
+                    const field = getField(obj, unwrap(name));
                     matched &= field !== undefined;
                     locals[name] = field;
                 }
@@ -835,7 +685,7 @@ export default class OakRuntime {
                         console.error(`[oak:debug] Tuple pattern mismatch object items length`);
                     }
                 }
-                let matched = obj.kind === this.INSTANCE_KIND_TUPLE;
+                let matched = obj.kind === INSTANCE_KIND_TUPLE;
                 for (let i = 0; i < pattern.items.length && matched; i++) {
                     matched &= this._match(pattern.items[i], obj.value[i], locals);
                 }
@@ -843,38 +693,231 @@ export default class OakRuntime {
             }
         }
     }
+}
 
-    _recordFiled(key, value, parent) {
-        return Object.freeze({kind: this.INSTANCE_KIND_RECORD, key, value, parent})
+const INSTANCE_KIND_UNIT = 1
+const INSTANCE_KIND_CHAR = 2
+const INSTANCE_KIND_INT = 3
+const INSTANCE_KIND_FLOAT = 4
+const INSTANCE_KIND_STRING = 5
+const INSTANCE_KIND_RECORD = 6
+const INSTANCE_KIND_TUPLE = 7
+const INSTANCE_KIND_LIST = 8
+const INSTANCE_KIND_OPTION = 9
+const INSTANCE_KIND_FUNC = 10
+
+const _True = option(qualifierIdentifier("Oak.Core.Basics", "Bool"), "True");
+const _False = option(qualifierIdentifier("Oak.Core.Basics", "Bool"), "False");
+
+function wrap(value) {
+    if (value === null) {
+        return unit()
     }
-
-    _listItem(value, next) {
-        return Object.freeze({kind: this.INSTANCE_KIND_LIST, value, next})
+    if (Array.isArray(value)) {
+        return list(value);
     }
-
-    _option(name, values) {
-        return Object.freeze({
-            kind: this.INSTANCE_KIND_OPTION,
-            name: name,
-            values: Object.freeze(values)
-        });
+    let t = typeof value;
+    if (t === "number") {
+        return float(value);
     }
+    if (t === "object") {
+        return record(value);
+    }
+    if (t === "boolean") {
+        return value ? _True : _False;
+    }
+    if (t === "string") {
+        return string(value);
+    }
+    if (isNaN(value)) {
+        return float(value)
+    }
+    throw "given object cannot be wrapped and used in oak code";
+}
 
-    _getField(rec, fieldName) {
-        if (rec === undefined) {
-            return undefined;
+function unwrap(x) {
+    const result = unwrapShallow(x);
+
+    switch (x.kind) {
+        case INSTANCE_KIND_LIST: {
+            return result.map(unwrap);
         }
-        if (fieldName === rec.key) {
-            return rec.value;
+        case INSTANCE_KIND_TUPLE: {
+            return result.map(unwrap);
         }
-        return this._getField(rec.parent, fieldName);
+        case INSTANCE_KIND_RECORD: {
+            return Object.keys(result).reduce((acc, k) => {
+                acc[k] = unwrap(result[k]);
+                return acc;
+            }, {});
+        }
     }
+    return result;
+}
 
-    _constEqual(a, b) {
-        return a.value === b.value &&
-            (a.kind === b.kind ||
-                (a.kind === this.INSTANCE_KIND_INT && b.kind === this.INSTANCE_KIND_FLOAT) ||
-                (a.kind === this.INSTANCE_KIND_FLOAT && b.kind === this.INSTANCE_KIND_INT)
-            );
+function unwrapShallow(x) {
+    switch (x.kind) {
+        case INSTANCE_KIND_LIST: {
+            let head = x;
+            let list = [];
+            while (head !== undefined && head.value !== undefined) {
+                list.push(head.value);
+                head = head.next;
+            }
+
+            return list;
+        }
+        case INSTANCE_KIND_RECORD: {
+            let field = x;
+            let rec = {};
+            while (field !== undefined && field.key !== undefined) {
+                if (rec[field.key] === undefined) {
+                    rec[field.key] = field.value;
+                }
+                field = field.parent;
+            }
+            return rec;
+        }
+        case INSTANCE_KIND_OPTION: {
+            if (x.name === _True.name) {
+                return true;
+            }
+            if (x.name === _False.name) {
+                return false;
+            }
+            return {$name: x.name, $values: x.values};
+        }
     }
+    return x.value;
+}
+
+function unit() {
+    return Object.freeze({kind: INSTANCE_KIND_UNIT, value: null});
+}
+
+function char(value) {
+    if ($DEBUG) {
+        if (typeof (value) !== "number") {
+            console.error(`[oak:debug] Char value is not number`);
+        }
+    }
+    return Object.freeze({kind: INSTANCE_KIND_CHAR, value});
+}
+
+function int(value) {
+    if ($DEBUG) {
+        if (typeof (value) !== "number") {
+            console.error(`[oak:debug] Int value is not number`);
+        }
+    }
+    return Object.freeze({kind: INSTANCE_KIND_INT, value});
+}
+
+function float(value) {
+    if ($DEBUG) {
+        if (typeof (value) !== "number") {
+            console.error(`[oak:debug] Float value is not number`);
+        }
+    }
+    return Object.freeze({kind: INSTANCE_KIND_FLOAT, value});
+}
+
+function string(value) {
+    if ($DEBUG) {
+        if (typeof (value) !== "string") {
+            console.error(`[oak:debug] String value is not string`);
+        }
+    }
+    return Object.freeze({kind: INSTANCE_KIND_STRING, value});
+}
+
+function record(value) {
+    return recordShallow(Object.keys(value).reduce((acc, k) => {
+        acc[k] = wrap(value[k]);
+        return acc;
+    }, {}));
+}
+
+function recordShallow(value) {
+    let rec = undefined;
+    for (const n in value) {
+        rec = recordFiled(n, value[n], rec);
+    }
+    if (rec === undefined) {
+        rec = recordFiled();
+    }
+    return rec;
+}
+
+function list(value) {
+    return listShallow(value.map(wrap));
+}
+
+function listShallow(value) {
+    let list = undefined;
+    for (let i = value.length - 1; i >= 0; i--) {
+        list = listItem(value[i], list);
+    }
+    if (list === undefined) {
+        list = listItem();
+    }
+    return list;
+}
+
+function tuple(value) {
+    return tupleShallow(value.map(wrap));
+}
+
+function tupleShallow(value) {
+    return Object.freeze({kind: INSTANCE_KIND_TUPLE, value: Object.freeze(value)});
+}
+
+function option(qualifiedIdentifier, name, values) {
+    return optionShallow(qualifiedIdentifier, name, (values || []).map(wrap));
+}
+
+function optionShallow(qualifiedIdentifier, name, values) {
+    return optionImpl(`${qualifiedIdentifier}#${name}`, values);
+}
+
+function optionImpl(name, values) {
+    return Object.freeze({
+        kind: INSTANCE_KIND_OPTION,
+        name: name,
+        values: Object.freeze(values || [])
+    });
+}
+
+function bool(value) {
+    return value ? _True : _False;
+}
+
+function qualifierIdentifier(module, definition) {
+    return `${module}.${definition}`;
+}
+
+function recordFiled(key, value, parent) {
+    return Object.freeze({kind: INSTANCE_KIND_RECORD, key, value, parent})
+}
+
+function listItem(value, next) {
+    return Object.freeze({kind: INSTANCE_KIND_LIST, value, next})
+}
+
+function getField(rec, fieldName) {
+    if (rec === undefined) {
+        return undefined;
+    }
+    if (fieldName === rec.key) {
+        return rec.value;
+    }
+    return getField(rec.parent, fieldName);
+}
+
+function constEqual(a, b) {
+    return a.value === b.value &&
+        (a.kind === b.kind ||
+            (a.kind === INSTANCE_KIND_INT && b.kind === INSTANCE_KIND_FLOAT) ||
+            (a.kind === INSTANCE_KIND_FLOAT && b.kind === INSTANCE_KIND_INT)
+        );
 }
