@@ -35,6 +35,7 @@ export default class OakRuntime {
     INSTANCE_KIND_LIST = INSTANCE_KIND_LIST
     INSTANCE_KIND_OPTION = INSTANCE_KIND_OPTION
     INSTANCE_KIND_FUNC = INSTANCE_KIND_FUNC
+    INSTANCE_KIND_EXTERN = INSTANCE_KIND_EXTERN
 
     /**
      * @param {String} moduleName Full module name, e.g. Oak.Core.Basics
@@ -59,6 +60,11 @@ export default class OakRuntime {
     unwrap = unwrap
 
     unwrapShallow = unwrapShallow
+    /**
+     * @param {*} value
+     * @return {Readonly<{}>}
+     */
+    extern = extern
 
     /**
      * @return {Readonly<{}>}
@@ -330,8 +336,6 @@ export default class OakRuntime {
                 }
                 case Acorn.OpKind.CALL: {
                     const name = this._acorn.strings[op.aStringHash].value;
-                    const n = objectStack.length;
-                    const start = n - op.bNumArgs;
                     if ($DEBUG) {
                         if (!name) {
                             console.error(`[oak:debug] External function name is empty`);
@@ -340,14 +344,20 @@ export default class OakRuntime {
                             console.error(`[oak:debug] Stack is not big enough to call '${name}'`);
                         }
                     }
-                    let args = objectStack.slice(start);
-                    objectStack.splice(start);
                     const cfn = this._externals[name];
                     if (cfn === undefined) {
                         console.error(`[oak] External function '${name}' is not registered`);
                     }
-                    let result = cfn.apply(this.externalSelfContext, args);
-                    objectStack.push(result);
+                    if (op.bNumArgs === 0) {
+                        objectStack.push(cfn);
+                    } else {
+                        const n = objectStack.length;
+                        const start = n - op.bNumArgs;
+                        let args = objectStack.slice(start);
+                        objectStack.splice(start);
+                        let result = cfn.apply(this.externalSelfContext, args);
+                        objectStack.push(result);
+                    }
                     break
                 }
                 case Acorn.OpKind.MATCH: {
@@ -705,9 +715,14 @@ const INSTANCE_KIND_TUPLE = 7
 const INSTANCE_KIND_LIST = 8
 const INSTANCE_KIND_OPTION = 9
 const INSTANCE_KIND_FUNC = 10
+const INSTANCE_KIND_EXTERN = 11
 
 const _True = option(qualifierIdentifier("Oak.Core.Basics", "Bool"), "True");
 const _False = option(qualifierIdentifier("Oak.Core.Basics", "Bool"), "False");
+
+function extern(x) {
+    return Object.freeze({kind: INSTANCE_KIND_EXTERN, value: x});
+}
 
 function wrap(value) {
     if (value === null) {
