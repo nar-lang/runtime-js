@@ -3,7 +3,7 @@
 import Acorn from "./acorn.js";
 import KaitaiStream from "./KaitaiStream.js";
 
-const $DEBUG = true;
+const $DEBUG = false;
 
 export default class OakRuntime {
     /**
