@@ -3,7 +3,7 @@
 import Acorn from "./acorn.js";
 import KaitaiStream from "./KaitaiStream.js";
 
-const $DEBUG = false;
+const $DEBUG = true;
 
 export default class OakRuntime {
     /**
@@ -23,6 +23,9 @@ export default class OakRuntime {
             fn.kind = INSTANCE_KIND_FUNC;
         }
         this.externalSelfContext = this;
+        if ($DEBUG) {
+            this._stack = [];
+        }
     }
 
     INSTANCE_KIND_UNIT = INSTANCE_KIND_UNIT
@@ -144,69 +147,80 @@ export default class OakRuntime {
      * @return {Readonly<{}>}
      */
     execute(qualifiedIdentifier, ...args) {
-        const fnIndex = this._exportsMap[qualifiedIdentifier];
-        if (fnIndex === undefined) {
-            console.error(`[oak] Definition '${qualifiedIdentifier}' is not exported by loaded binary`)
+        try {
+            const fnIndex = this._exportsMap[qualifiedIdentifier];
+            if (fnIndex === undefined) {
+                throw(`[oak] Definition '${qualifiedIdentifier}' is not exported by loaded binary`)
+            }
+            const fn = this._acorn.funcs[fnIndex];
+            if (args.length !== fn.numArgs) {
+                throw(`[oak] Function '${qualifiedIdentifier}' requires ${fn.numArgs} arguments, but ${args.length} given`);
+            }
+            const objectStack = args.slice();
+            this._executeFn(fn, objectStack, [], {}, qualifiedIdentifier);
+            return objectStack.pop();
+        } catch (e) {
+            this._throwStack(e);
         }
-        const fn = this._acorn.funcs[fnIndex];
-        if (args.length !== fn.numArgs) {
-            console.error(`[oak] Function '${qualifiedIdentifier}' requires ${fn.numArgs} arguments, but ${args.length} given`);
-        }
-        if ($DEBUG) {
-            fn.$DebugName = qualifiedIdentifier;
-            fn.$DebugPointer = fnIndex;
-        }
-        const objectStack = args.slice();
-        this._executeFn(fn, objectStack, [], {});
-        return objectStack.pop();
     }
 
     executeFn(fn, args) {
-        if (fn.curriedFn) {
-            const numCurriedArgs = fn.curriedArgs && fn.curriedArgs.length || 0;
-            const requiredArgs = fn.numArgs - numCurriedArgs;
-            if (requiredArgs === args.length) {
-                const stack = fn.curriedArgs.concat(args);
-                this._executeFn(fn.curriedFn, stack, []);
-                return stack.pop();
-            } else if (requiredArgs > args.length) {
-                return Object.freeze({
-                    curriedFn: fn.curriedFn,
-                    numArgs: fn.numArgs,
-                    kind: this.INSTANCE_KIND_FUNC,
-                    curriedArgs: fn.curriedArgs.concat(args),
-                    index: ++this._closureIndex,
-                });
+        try {
+            if (fn.curriedFn) {
+                const numCurriedArgs = fn.curriedArgs && fn.curriedArgs.length || 0;
+                const requiredArgs = fn.numArgs - numCurriedArgs;
+                if (requiredArgs === args.length) {
+                    const stack = fn.curriedArgs.concat(args);
+                    this._executeFn(fn.curriedFn, stack, []);
+                    return stack.pop();
+                } else if (requiredArgs > args.length) {
+                    return Object.freeze({
+                        curriedFn: fn.curriedFn,
+                        numArgs: fn.numArgs,
+                        kind: this.INSTANCE_KIND_FUNC,
+                        curriedArgs: fn.curriedArgs.concat(args),
+                        index: ++this._closureIndex,
+                    });
+                } else {
+                    const topArgs = args.slice(0, requiredArgs);
+                    const stack = fn.curriedArgs.concat(topArgs);
+                    this._executeFn(fn.curriedFn, stack, []);
+                    return this.executeFn(stack.pop(), args.slice(requiredArgs));
+                }
             } else {
-                const topArgs = args.slice(0, requiredArgs);
-                const stack = fn.curriedArgs.concat(topArgs);
-                this._executeFn(fn.curriedFn, stack, []);
-                return this.executeFn(stack.pop(), args.slice(requiredArgs));
+                if (fn.numArgs === args.length) {
+                    this._executeFn(fn, args, []);
+                    return args.pop();
+                } else if (fn.numArgs > args.length) {
+                    return Object.freeze({
+                        curriedFn: fn,
+                        numArgs: fn.numArgs,
+                        kind: this.INSTANCE_KIND_FUNC,
+                        curriedArgs: args,
+                        index: ++this._closureIndex,
+                    });
+                } else {
+                    const stack = args.slice(0, fn.numArgs);
+                    this._executeFn(fn, stack, []);
+                    return this.executeFn(stack.pop(), args.slice(fn.numArgs));
+                }
             }
-        } else {
-            if (fn.numArgs === args.length) {
-                this._executeFn(fn, args, []);
-                return args.pop();
-            } else if (fn.numArgs > args.length) {
-                return Object.freeze({
-                    curriedFn: fn,
-                    numArgs: fn.numArgs,
-                    kind: this.INSTANCE_KIND_FUNC,
-                    curriedArgs: args,
-                    index: ++this._closureIndex,
-                });
-            } else {
-                const stack = args.slice(0, fn.numArgs);
-                this._executeFn(fn, stack, []);
-                return this.executeFn(stack.pop(), args.slice(fn.numArgs));
-            }
+        } catch (e) {
+            this._throwStack(e);
         }
     }
 
-    _executeFn(fn, objectStack, patternStack) {
+    _executeFn(fn, objectStack, patternStack, fnName) {
+        if ($DEBUG) {
+            this._stack.push({fn: fnName});
+        }
+
         let locals = {};
         let index = 0;
         while (index < fn.ops.length) {
+            if ($DEBUG) {
+                this._stack[this._stack.length - 1].file = fn.filePath.value + ":" + fn.locations[index].line;
+            }
             const op = fn.ops[index];
             switch (op.kind) {
                 case Acorn.OpKind.LOAD_LOCAL: {
@@ -214,13 +228,13 @@ export default class OakRuntime {
                     const local = locals[name];
                     if ($DEBUG) {
                         if (!name) {
-                            console.error(`[oak:debug] Local variable name is empty`);
+                            throw(`[oak:debug] Local variable name is empty`);
                         }
                         if (!local) {
-                            console.error(`[oak:debug] Local variable '${name}' is not defined`);
+                            throw(`[oak:debug] Local variable '${name}' is not defined`);
                         }
                         if (!local.kind) {
-                            console.error(`[oak:debug] Local variable '${name}' in not wrapped`);
+                            throw(`[oak:debug] Local variable '${name}' in not wrapped`);
                         }
                     }
                     objectStack.push(local);
@@ -230,7 +244,7 @@ export default class OakRuntime {
                     const glob = this._acorn.funcs[op.aPointer];
                     if ($DEBUG) {
                         if (!glob) {
-                            console.error(`[oak:debug] Global function '${op.aPointer}' is not defined`);
+                            throw(`[oak:debug] Global function '${op.aPointer}' is not defined`);
                         } else {
                             glob.$DebugName = Object.keys(this._exportsMap).filter(k => this._exportsMap[k] === op.aPointer)[0];
                             glob.$DebugPointer = op.aPointer;
@@ -242,7 +256,7 @@ export default class OakRuntime {
                             this._executeFn(glob, objectStack, patternStack);
                             if ($DEBUG) {
                                 if (objectStack.length === 0) {
-                                    console.error(`[oak:debug] Stack is empty after executing '${glob.$DebugName}'`);
+                                    throw(`[oak:debug] Stack is empty after '${glob.$DebugName}'`);
                                 }
                             }
                             this._cachedExpressions[op.aPointer] = objectStack[objectStack.length - 1];
@@ -296,7 +310,7 @@ export default class OakRuntime {
                 case Acorn.OpKind.APPLY: {
                     if ($DEBUG) {
                         if (objectStack.length === 0) {
-                            console.error(`[oak:debug] Stack is empty when applying function`);
+                            throw(`[oak:debug] Stack is empty when applying function`);
                         }
                     }
                     const afn = objectStack.pop();
@@ -318,7 +332,7 @@ export default class OakRuntime {
                     } else {
                         if ($DEBUG) {
                             if (objectStack.length < n) {
-                                console.error(`[oak:debug] Stack is not big enough to curry '${afn.$DebugName}'`);
+                                throw(`[oak:debug] Stack is not big enough to curry '${afn.$DebugName}'`);
                             }
                         }
                         const args = objectStack.slice(start);
@@ -338,15 +352,15 @@ export default class OakRuntime {
                     const name = this._acorn.strings[op.aStringHash].value;
                     if ($DEBUG) {
                         if (!name) {
-                            console.error(`[oak:debug] External function name is empty`);
+                            throw(`[oak:debug] External function name is empty`);
                         }
                         if (objectStack.length < op.bNumArgs) {
-                            console.error(`[oak:debug] Stack is not big enough to call '${name}'`);
+                            throw(`[oak:debug] Stack is not big enough to call '${name}'`);
                         }
                     }
                     const cfn = this._externals[name];
                     if (cfn === undefined) {
-                        console.error(`[oak] External function '${name}' is not registered`);
+                        throw(`[oak] External function '${name}' is not registered`);
                     }
                     if (op.bNumArgs === 0) {
                         objectStack.push(cfn);
@@ -364,7 +378,7 @@ export default class OakRuntime {
                     if (!this._match(patternStack.pop(), objectStack[objectStack.length - 1], locals)) {
                         if ($DEBUG) {
                             if (op.aJumpDelta === 0) {
-                                console.error(`[oak:debug] Pattern match fail with jump delta 0 should not happen`);
+                                throw(`[oak:debug] Pattern match fail with jump delta 0 should not happen`);
                             }
                         }
                         index += op.aJumpDelta;
@@ -384,7 +398,7 @@ export default class OakRuntime {
                                 const n = objectStack.length;
                                 if ($DEBUG) {
                                     if (n < op.aNumItems) {
-                                        console.error(`[oak:debug] Stack is not big enough to make list with ${op.aNumItems} items`);
+                                        throw(`[oak:debug] Stack is not big enough to make list with ${op.aNumItems} items`);
                                     }
                                 }
                                 const start = n - op.aNumItems;
@@ -400,7 +414,7 @@ export default class OakRuntime {
                         case Acorn.ObjectKind.TUPLE: {
                             if ($DEBUG) {
                                 if (objectStack.length < op.aNumItems) {
-                                    console.error(`[oak:debug] Stack is not big enough to make tuple with ${op.aNumItems} items`);
+                                    throw(`[oak:debug] Stack is not big enough to make tuple with ${op.aNumItems} items`);
                                 }
                             }
                             const start = objectStack.length - op.aNumItems;
@@ -413,7 +427,7 @@ export default class OakRuntime {
                         case Acorn.ObjectKind.RECORD: {
                             if ($DEBUG) {
                                 if (objectStack.length < op.aNumItems) {
-                                    console.error(`[oak:debug] Stack is not big enough to make record with ${op.aNumItems} items`);
+                                    throw(`[oak:debug] Stack is not big enough to make record with ${op.aNumItems} items`);
                                 }
                             }
                             if (0 === op.aNumItems) {
@@ -422,7 +436,7 @@ export default class OakRuntime {
                                 const n = objectStack.length;
                                 if ($DEBUG) {
                                     if (n < op.aNumItems * 2) {
-                                        console.error(`[oak:debug] Stack is not big enough to make record with ${op.aNumItems} fields`);
+                                        throw(`[oak:debug] Stack is not big enough to make record with ${op.aNumItems} fields`);
                                     }
                                 }
 
@@ -440,7 +454,7 @@ export default class OakRuntime {
                         case Acorn.ObjectKind.DATA: {
                             if ($DEBUG) {
                                 if (objectStack.length === 0) {
-                                    console.error(`[oak:debug] Stack is empty when making data option`);
+                                    throw(`[oak:debug] Stack is empty when making data option`);
                                 }
                             }
                             const objName = objectStack.pop();
@@ -448,7 +462,7 @@ export default class OakRuntime {
                             const start = objectStack.length - op.aNumItems;
                             if ($DEBUG) {
                                 if (objectStack.length < op.aNumItems) {
-                                    console.error(`[oak:debug] Stack is not big enough to make data with ${op.aNumItems} items`);
+                                    throw(`[oak:debug] Stack is not big enough to make data with ${op.aNumItems} items`);
                                 }
                             }
                             const items = objectStack.slice(start);
@@ -468,10 +482,10 @@ export default class OakRuntime {
                             name = this._acorn.strings[op.aStringHash].value;
                             if ($DEBUG) {
                                 if (!name) {
-                                    console.error(`[oak:debug] Pattern alias name is empty`);
+                                    throw(`[oak:debug] Pattern alias name is empty`);
                                 }
                                 if (patternStack.length === 0) {
-                                    console.error(`[oak:debug] Stack is empty when making pattern alias`);
+                                    throw(`[oak:debug] Stack is empty when making pattern alias`);
                                 }
                             }
                             items = [patternStack.pop()];
@@ -483,7 +497,7 @@ export default class OakRuntime {
                         case Acorn.PatternKind.CONS: {
                             if ($DEBUG) {
                                 if (patternStack.length < 2) {
-                                    console.error(`[oak:debug] Stack is not big enough to make pattern cons`);
+                                    throw(`[oak:debug] Stack is not big enough to make pattern cons`);
                                 }
                             }
                             items = [patternStack.pop(), patternStack.pop()];
@@ -492,7 +506,7 @@ export default class OakRuntime {
                         case Acorn.PatternKind.CONST: {
                             if ($DEBUG) {
                                 if (patternStack.length === 0) {
-                                    console.error(`[oak:debug] Stack is empty when making pattern const`);
+                                    throw(`[oak:debug] Stack is empty when making pattern const`);
                                 }
                             }
                             items = [patternStack.pop()];
@@ -504,10 +518,10 @@ export default class OakRuntime {
                             const start = patternStack.length - n;
                             if ($DEBUG) {
                                 if (!name) {
-                                    console.error(`[oak:debug] Pattern data option name is empty`);
+                                    throw(`[oak:debug] Pattern data option name is empty`);
                                 }
                                 if (patternStack.length < n) {
-                                    console.error(`[oak:debug] Stack is not big enough to make pattern data option with ${n} items`);
+                                    throw(`[oak:debug] Stack is not big enough to make pattern data option with ${n} items`);
                                 }
                             }
                             items = patternStack.slice(start);
@@ -519,7 +533,7 @@ export default class OakRuntime {
                             const start = patternStack.length - n;
                             if ($DEBUG) {
                                 if (patternStack.length < n) {
-                                    console.error(`[oak:debug] Stack is not big enough to make pattern list with ${n} items`);
+                                    throw(`[oak:debug] Stack is not big enough to make pattern list with ${n} items`);
                                 }
                             }
                             items = patternStack.slice(start);
@@ -530,7 +544,7 @@ export default class OakRuntime {
                             name = this._acorn.strings[op.aStringHash].value;
                             if ($DEBUG) {
                                 if (!name) {
-                                    console.error(`[oak:debug] Pattern named name is empty`);
+                                    throw(`[oak:debug] Pattern named name is empty`);
                                 }
                             }
                             break;
@@ -540,7 +554,7 @@ export default class OakRuntime {
                             const start = patternStack.length - n;
                             if ($DEBUG) {
                                 if (patternStack.length < n) {
-                                    console.error(`[oak:debug] Stack is not big enough to make pattern record with ${n} items`);
+                                    throw(`[oak:debug] Stack is not big enough to make pattern record with ${n} items`);
                                 }
                             }
                             items = patternStack.slice(start).map(unwrap);
@@ -552,7 +566,7 @@ export default class OakRuntime {
                             const start = patternStack.length - n;
                             if ($DEBUG) {
                                 if (patternStack.length < n) {
-                                    console.error(`[oak:debug] Stack is not big enough to make pattern tuple with ${n} items`);
+                                    throw(`[oak:debug] Stack is not big enough to make pattern tuple with ${n} items`);
                                 }
                             }
                             items = patternStack.slice(start);
@@ -568,10 +582,10 @@ export default class OakRuntime {
                     const name = this._acorn.strings[op.aStringHash].value;
                     if ($DEBUG) {
                         if (!name) {
-                            console.error(`[oak:debug] Field name is empty`);
+                            throw(`[oak:debug] Field name is empty`);
                         }
                         if (objectStack.length === 0) {
-                            console.error(`[oak:debug] Stack is empty when accessing field`);
+                            throw(`[oak:debug] Stack is empty when accessing field`);
                         }
                     }
                     const rec = objectStack.pop();
@@ -583,10 +597,10 @@ export default class OakRuntime {
                     const name = this._acorn.strings[op.aStringHash].value;
                     if ($DEBUG) {
                         if (!name) {
-                            console.error(`[oak:debug] Field name is empty`);
+                            throw(`[oak:debug] Field name is empty`);
                         }
                         if (objectStack.length < 2) {
-                            console.error(`[oak:debug] Stack is not big enough to update field`);
+                            throw(`[oak:debug] Stack is not big enough to update field`);
                         }
                     }
                     const value = objectStack.pop();
@@ -599,14 +613,14 @@ export default class OakRuntime {
                     if (op.bSwapPopMode === Acorn.SwapPopMode.BOTH) {
                         if ($DEBUG) {
                             if (objectStack.length < 2) {
-                                console.error(`[oak:debug] Stack is not big enough to swap-pop (both)`);
+                                throw(`[oak:debug] Stack is not big enough to swap-pop (both)`);
                             }
                         }
                         objectStack.splice(objectStack.length - 2, 1);
                     } else {
                         if ($DEBUG) {
                             if (objectStack.length === 0) {
-                                console.error(`[oak:debug] Stack is not big enough to swap-pop (pop)`);
+                                throw(`[oak:debug] Stack is not big enough to swap-pop (pop)`);
                             }
                         }
                         objectStack.pop();
@@ -616,6 +630,10 @@ export default class OakRuntime {
             }
             index++
         }
+
+        if ($DEBUG) {
+            this._stack.pop();
+        }
     }
 
     _match(pattern, obj, locals) {
@@ -624,7 +642,7 @@ export default class OakRuntime {
                 locals[pattern.name] = obj;
                 if ($DEBUG) {
                     if (pattern.items.length !== 1) {
-                        console.error(`[oak:debug] Alias pattern should have exactly one item`);
+                        throw(`[oak:debug] Alias pattern should have exactly one item`);
                     }
                 }
                 return this._match(pattern.items[0], obj, locals);
@@ -635,7 +653,7 @@ export default class OakRuntime {
             case Acorn.PatternKind.CONS: {
                 if ($DEBUG) {
                     if (pattern.items.length !== 2) {
-                        console.error(`[oak:debug] Cons pattern should have exactly two items`);
+                        throw(`[oak:debug] Cons pattern should have exactly two items`);
                     }
                 }
                 let matched = obj.kind === INSTANCE_KIND_LIST && obj.value !== undefined;
@@ -646,7 +664,7 @@ export default class OakRuntime {
             case Acorn.PatternKind.CONST: {
                 if ($DEBUG) {
                     if (pattern.items.length !== 1) {
-                        console.error(`[oak:debug] Const pattern should have exactly one item`);
+                        throw(`[oak:debug] Const pattern should have exactly one item`);
                     }
                 }
                 return constEqual(obj, pattern.items[0]);
@@ -692,7 +710,7 @@ export default class OakRuntime {
                     const pl = pattern.items && pattern.items.length || 0;
                     const vl = obj.value && obj.value.length || 0;
                     if (pl !== vl) {
-                        console.error(`[oak:debug] Tuple pattern mismatch object items length`);
+                        throw(`[oak:debug] Tuple pattern mismatch object items length`);
                     }
                 }
                 let matched = obj.kind === INSTANCE_KIND_TUPLE;
@@ -701,6 +719,12 @@ export default class OakRuntime {
                 }
                 return matched;
             }
+        }
+    }
+
+    _throwStack(err) {
+        if ($DEBUG) {
+            throw err + "\n" + this._stack.reverse().map(x => `${x.fn} ${x.file}`).join("\n");
         }
     }
 }
@@ -802,6 +826,9 @@ function unwrapShallow(x) {
             }
             return {$name: x.name, $values: x.values};
         }
+        case INSTANCE_KIND_FUNC: {
+            return {$func: x};
+        }
     }
     return x.value;
 }
@@ -813,7 +840,7 @@ function unit() {
 function char(value) {
     if ($DEBUG) {
         if (typeof (value) !== "number") {
-            console.error(`[oak:debug] Char value is not number`);
+            throw(`[oak:debug] Char value is not number`);
         }
     }
     return Object.freeze({kind: INSTANCE_KIND_CHAR, value});
@@ -822,7 +849,7 @@ function char(value) {
 function int(value) {
     if ($DEBUG) {
         if (typeof (value) !== "number") {
-            console.error(`[oak:debug] Int value is not number`);
+            throw(`[oak:debug] Int value is not number`);
         }
     }
     return Object.freeze({kind: INSTANCE_KIND_INT, value});
@@ -831,7 +858,7 @@ function int(value) {
 function float(value) {
     if ($DEBUG) {
         if (typeof (value) !== "number") {
-            console.error(`[oak:debug] Float value is not number`);
+            throw(`[oak:debug] Float value is not number`);
         }
     }
     return Object.freeze({kind: INSTANCE_KIND_FLOAT, value});
@@ -840,7 +867,7 @@ function float(value) {
 function string(value) {
     if ($DEBUG) {
         if (typeof (value) !== "string") {
-            console.error(`[oak:debug] String value is not string`);
+            throw(`[oak:debug] String value is not string`);
         }
     }
     return Object.freeze({kind: INSTANCE_KIND_STRING, value});
@@ -930,9 +957,5 @@ function getField(rec, fieldName) {
 }
 
 function constEqual(a, b) {
-    return a.value === b.value &&
-        (a.kind === b.kind ||
-            (a.kind === INSTANCE_KIND_INT && b.kind === INSTANCE_KIND_FLOAT) ||
-            (a.kind === INSTANCE_KIND_FLOAT && b.kind === INSTANCE_KIND_INT)
-        );
+    return a.value === b.value && (a.kind === b.kind);
 }
