@@ -157,7 +157,7 @@ export default class OakRuntime {
                 throw(`[oak] Function '${qualifiedIdentifier}' requires ${fn.numArgs} arguments, but ${args.length} given`);
             }
             const objectStack = args.slice();
-            this._executeFn(fn, objectStack, [], {}, qualifiedIdentifier);
+            this._executeFn(fn, objectStack, [], qualifiedIdentifier);
             return objectStack.pop();
         } catch (e) {
             this._throwStack(e);
@@ -324,7 +324,7 @@ export default class OakRuntime {
                         if ($DEBUG) {
                             const fnStack = objectStack.slice(start);
                             objectStack.splice(start);
-                            this._executeFn(afn, fnStack, [], afn.locals || locals);
+                            this._executeFn(afn, fnStack, []);
                             objectStack.push(...fnStack);
                         } else {
                             this._executeFn(afn, objectStack, patternStack);
@@ -375,7 +375,9 @@ export default class OakRuntime {
                     break
                 }
                 case Acorn.OpKind.MATCH: {
-                    if (!this._match(patternStack.pop(), objectStack[objectStack.length - 1], locals)) {
+                    const pattern = patternStack.pop();
+                    const obj = objectStack[objectStack.length - 1];
+                    if (!this._match(pattern, obj, locals)) {
                         if ($DEBUG) {
                             if (op.aJumpDelta === 0) {
                                 throw(`[oak:debug] Pattern match fail with jump delta 0 should not happen`);
