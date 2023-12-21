@@ -12,7 +12,7 @@ export default class OakRuntime {
      */
     constructor(arrayBuffer, arrayBufferOffset = 0) {
         this._acorn = new Acorn(new KaitaiStream(arrayBuffer, arrayBufferOffset));
-        this._externals = {};
+        this._natives = {};
         this._cachedExpressions = {};
         this._closureIndex = 0n;
         this._exportsMap = this._acorn.exports.reduce((acc, x) => {
@@ -26,6 +26,7 @@ export default class OakRuntime {
         if ($DEBUG) {
             this._stack = [];
         }
+        this._scope = {};
     }
 
     INSTANCE_KIND_UNIT = INSTANCE_KIND_UNIT
@@ -38,16 +39,29 @@ export default class OakRuntime {
     INSTANCE_KIND_LIST = INSTANCE_KIND_LIST
     INSTANCE_KIND_OPTION = INSTANCE_KIND_OPTION
     INSTANCE_KIND_FUNC = INSTANCE_KIND_FUNC
-    INSTANCE_KIND_EXTERN = INSTANCE_KIND_EXTERN
+    INSTANCE_KIND_NATIVE = INSTANCE_KIND_NATIVE
 
     /**
      * @param {String} moduleName Full module name, e.g. Oak.Core.Basics
-     * @param {{[String]: function}} definitions Map of external defined functions
+     * @param {{[String]: function}} definitions Map of native defined functions
      */
     register(moduleName, definitions) {
         for (let name in definitions) {
-            this._externals[this.qualifierIdentifier(moduleName, name)] = definitions[name];
+            this._natives[this.qualifierIdentifier(moduleName, name)] = definitions[name];
         }
+    }
+
+    /**
+     * @param {String} moduleName
+     * @param {*?} helpers
+     * @return {*}
+     */
+    scope(moduleName, helpers) {
+        if (helpers === undefined) {
+            return this._scope[moduleName];
+        }
+        this._scope[moduleName] = helpers;
+        return helpers;
     }
 
     /**
@@ -67,7 +81,7 @@ export default class OakRuntime {
      * @param {*} value
      * @return {Readonly<{}>}
      */
-    extern = extern
+    native = native
 
     /**
      * @return {Readonly<{}>}
@@ -352,15 +366,15 @@ export default class OakRuntime {
                     const name = this._acorn.strings[op.aStringHash].value;
                     if ($DEBUG) {
                         if (!name) {
-                            throw(`[oak:debug] External function name is empty`);
+                            throw(`[oak:debug] Native function name is empty`);
                         }
                         if (objectStack.length < op.bNumArgs) {
                             throw(`[oak:debug] Stack is not big enough to call '${name}'`);
                         }
                     }
-                    const cfn = this._externals[name];
+                    const cfn = this._natives[name];
                     if (cfn === undefined) {
-                        throw(`[oak] External function '${name}' is not registered`);
+                        throw(`[oak] Native function '${name}' is not registered`);
                     }
                     if (op.bNumArgs === 0) {
                         objectStack.push(cfn);
@@ -741,13 +755,13 @@ const INSTANCE_KIND_TUPLE = 7
 const INSTANCE_KIND_LIST = 8
 const INSTANCE_KIND_OPTION = 9
 const INSTANCE_KIND_FUNC = 10
-const INSTANCE_KIND_EXTERN = 11
+const INSTANCE_KIND_NATIVE = 11
 
 const _True = option(qualifierIdentifier("Oak.Core.Basics", "Bool"), "True");
 const _False = option(qualifierIdentifier("Oak.Core.Basics", "Bool"), "False");
 
-function extern(x) {
-    return Object.freeze({kind: INSTANCE_KIND_EXTERN, value: x});
+function native(x) {
+    return Object.freeze({kind: INSTANCE_KIND_NATIVE, value: x});
 }
 
 function wrap(value) {
