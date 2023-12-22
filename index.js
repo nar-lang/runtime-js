@@ -27,6 +27,8 @@ export default class OakRuntime {
             this._stack = [];
         }
         this._scope = {};
+        this._registeredModules = {};
+        this._awaitingDependencies = [];
     }
 
     INSTANCE_KIND_UNIT = INSTANCE_KIND_UNIT
@@ -43,11 +45,40 @@ export default class OakRuntime {
 
     /**
      * @param {String} moduleName Full module name, e.g. Oak.Core.Basics
-     * @param {{[String]: function}} definitions Map of native defined functions
+     * @param {{[String]: function|Readonly<{}>}} definitions Map of native defined functions/constants
      */
     register(moduleName, definitions) {
         for (let name in definitions) {
             this._natives[this.qualifierIdentifier(moduleName, name)] = definitions[name];
+        }
+        this._registeredModules[moduleName] = true;
+        this._checkDependencies();
+    }
+
+    /**
+     * Calls callback after all module dependencies are registered
+     * @param {[String]} deps
+     * @param {function()} callback
+     */
+    afterRegistered(deps, callback) {
+        this._awaitingDependencies.push([deps, callback]);
+        this._checkDependencies();
+    }
+
+    _checkDependencies() {
+        for (let i = this._awaitingDependencies.length - 1; i >= 0; i--) {
+            const [deps, callback] = this._awaitingDependencies[i];
+            let ready = true;
+            for (let dep of deps) {
+                if (!this._registeredModules[dep]) {
+                    ready = false;
+                    break;
+                }
+            }
+            if (ready) {
+                this._awaitingDependencies.splice(i, 1);
+                callback();
+            }
         }
     }
 
