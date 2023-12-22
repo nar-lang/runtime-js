@@ -743,6 +743,10 @@ export default class OakRuntime {
             throw err + "\n" + this._stack.reverse().map(x => `${x.fn} ${x.file}`).join("\n");
         }
     }
+
+    _showStack() {
+        console.log(this._stack.reverse().map(x => `${x.fn} ${x.file}`).join("\n"));
+    }
 }
 
 const INSTANCE_KIND_UNIT = 1
@@ -805,6 +809,11 @@ function unwrap(x) {
                 acc[k] = unwrap(result[k]);
                 return acc;
             }, {});
+        }
+        case INSTANCE_KIND_OPTION: {
+            if (result.$values) {
+                result.$values = result.$values.map(unwrap);
+            }
         }
     }
     return result;
