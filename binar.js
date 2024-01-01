@@ -2,8 +2,8 @@
 
 import KaitaiStream from "./KaitaiStream.js";
 
-var Acorn = (function() {
-    Acorn.ObjectKind = Object.freeze({
+var Binar = (function() {
+    Binar.ObjectKind = Object.freeze({
         LIST: 1,
         TUPLE: 2,
         RECORD: 3,
@@ -15,7 +15,7 @@ var Acorn = (function() {
         4: "DATA",
     });
 
-    Acorn.SwapPopMode = Object.freeze({
+    Binar.SwapPopMode = Object.freeze({
         BOTH: 1,
         POP: 2,
 
@@ -23,7 +23,7 @@ var Acorn = (function() {
         2: "POP",
     });
 
-    Acorn.PatternKind = Object.freeze({
+    Binar.PatternKind = Object.freeze({
         ALIAS: 1,
         ANY: 2,
         CONS: 3,
@@ -45,7 +45,7 @@ var Acorn = (function() {
         9: "TUPLE",
     });
 
-    Acorn.PackedConstKind = Object.freeze({
+    Binar.PackedConstKind = Object.freeze({
         INT: 1,
         FLOAT: 2,
 
@@ -53,7 +53,7 @@ var Acorn = (function() {
         2: "FLOAT",
     });
 
-    Acorn.OpKind = Object.freeze({
+    Binar.OpKind = Object.freeze({
         LOAD_LOCAL: 1,
         LOAD_GLOBAL: 2,
         LOAD_CONST: 3,
@@ -81,7 +81,7 @@ var Acorn = (function() {
         12: "UPDATE",
     });
 
-    Acorn.ConstKind = Object.freeze({
+    Binar.ConstKind = Object.freeze({
         UNIT: 1,
         CHAR: 2,
         INT: 3,
@@ -95,7 +95,7 @@ var Acorn = (function() {
         5: "STRING",
     });
 
-    Acorn.StackKind = Object.freeze({
+    Binar.StackKind = Object.freeze({
         OBJECT: 1,
         PATTERN: 2,
 
@@ -103,14 +103,14 @@ var Acorn = (function() {
         2: "PATTERN",
     });
 
-    function Acorn(_io, _parent, _root) {
+    function Binar(_io, _parent, _root) {
         this._io = _io;
         this._parent = _parent;
         this._root = _root || this;
 
         this._read();
     }
-    Acorn.prototype._read = function() {
+    Binar.prototype._read = function() {
         this.formatVersion = this._io.readBytes(4);
         if (!((KaitaiStream.byteArrayCompare(this.formatVersion, [1, 0, 0, 0]) == 0))) {
             throw new KaitaiStream.ValidationNotEqualError([1, 0, 0, 0], this.formatVersion, this._io, "/seq/0");
@@ -139,7 +139,7 @@ var Acorn = (function() {
         }
     }
 
-    var Export = Acorn.Export = (function() {
+    var Export = Binar.Export = (function() {
         function Export(_io, _parent, _root) {
             this._io = _io;
             this._parent = _parent;
@@ -155,7 +155,7 @@ var Acorn = (function() {
         return Export;
     })();
 
-    var Const = Acorn.Const = (function() {
+    var Const = Binar.Const = (function() {
         function Const(_io, _parent, _root) {
             this._io = _io;
             this._parent = _parent;
@@ -165,10 +165,10 @@ var Acorn = (function() {
         }
         Const.prototype._read = function() {
             this.kind = this._io.readU1();
-            if (this.kind == Acorn.PackedConstKind.INT) {
+            if (this.kind == Binar.PackedConstKind.INT) {
                 this.intValue = this._io.readS8le();
             }
-            if (this.kind == Acorn.PackedConstKind.FLOAT) {
+            if (this.kind == Binar.PackedConstKind.FLOAT) {
                 this.floatValue = this._io.readF8le();
             }
         }
@@ -176,7 +176,7 @@ var Acorn = (function() {
         return Const;
     })();
 
-    var Strl = Acorn.Strl = (function() {
+    var Strl = Binar.Strl = (function() {
         function Strl(_io, _parent, _root) {
             this._io = _io;
             this._parent = _parent;
@@ -192,7 +192,7 @@ var Acorn = (function() {
         return Strl;
     })();
 
-    var Func = Acorn.Func = (function() {
+    var Func = Binar.Func = (function() {
         function Func(_io, _parent, _root) {
             this._io = _io;
             this._parent = _parent;
@@ -221,7 +221,7 @@ var Acorn = (function() {
         return Func;
     })();
 
-    var Loc = Acorn.Loc = (function() {
+    var Loc = Binar.Loc = (function() {
         function Loc(_io, _parent, _root) {
             this._io = _io;
             this._parent = _parent;
@@ -237,7 +237,7 @@ var Acorn = (function() {
         return Loc;
     })();
 
-    var Op = Acorn.Op = (function() {
+    var Op = Binar.Op = (function() {
         function Op(_io, _parent, _root) {
             this._io = _io;
             this._parent = _parent;
@@ -247,34 +247,34 @@ var Acorn = (function() {
         }
         Op.prototype._read = function() {
             this.kind = this._io.readU1();
-            if (this.kind == Acorn.OpKind.LOAD_CONST) {
+            if (this.kind == Binar.OpKind.LOAD_CONST) {
                 this.bStackKind = this._io.readU1();
             }
-            if ( ((this.kind == Acorn.OpKind.APPLY) || (this.kind == Acorn.OpKind.CALL)) ) {
+            if ( ((this.kind == Binar.OpKind.APPLY) || (this.kind == Binar.OpKind.CALL)) ) {
                 this.bNumArgs = this._io.readU1();
             }
-            if (this.kind == Acorn.OpKind.MAKE_OBJECT) {
+            if (this.kind == Binar.OpKind.MAKE_OBJECT) {
                 this.bObjectKind = this._io.readU1();
             }
-            if (this.kind == Acorn.OpKind.MAKE_PATTERN) {
+            if (this.kind == Binar.OpKind.MAKE_PATTERN) {
                 this.bPatternKind = this._io.readU1();
             }
-            if (this.kind == Acorn.OpKind.SWAP_POP) {
+            if (this.kind == Binar.OpKind.SWAP_POP) {
                 this.bSwapPopMode = this._io.readU1();
             }
-            if ( ((this.kind == Acorn.OpKind.LOAD_LOCAL) || (this.kind == Acorn.OpKind.LOAD_GLOBAL) || (this.kind == Acorn.OpKind.MATCH) || (this.kind == Acorn.OpKind.JUMP) || (this.kind == Acorn.OpKind.ACCESS) || (this.kind == Acorn.OpKind.UPDATE)) ) {
+            if ( ((this.kind == Binar.OpKind.LOAD_LOCAL) || (this.kind == Binar.OpKind.LOAD_GLOBAL) || (this.kind == Binar.OpKind.MATCH) || (this.kind == Binar.OpKind.JUMP) || (this.kind == Binar.OpKind.ACCESS) || (this.kind == Binar.OpKind.UPDATE)) ) {
                 this._unnamed6 = this._io.readBytes(1);
                 if (!((KaitaiStream.byteArrayCompare(this._unnamed6, [0]) == 0))) {
                     throw new KaitaiStream.ValidationNotEqualError([0], this._unnamed6, this._io, "/types/op/seq/6");
                 }
             }
-            if (this.kind == Acorn.OpKind.LOAD_CONST) {
+            if (this.kind == Binar.OpKind.LOAD_CONST) {
                 this.cConstKind = this._io.readU1();
             }
-            if (this.kind == Acorn.OpKind.MAKE_PATTERN) {
+            if (this.kind == Binar.OpKind.MAKE_PATTERN) {
                 this.cNumNested = this._io.readU1();
             }
-            if ( ((this.kind != Acorn.OpKind.LOAD_CONST) && (this.kind != Acorn.OpKind.MAKE_PATTERN)) ) {
+            if ( ((this.kind != Binar.OpKind.LOAD_CONST) && (this.kind != Binar.OpKind.MAKE_PATTERN)) ) {
                 this._unnamed9 = this._io.readBytes(1);
                 if (!((KaitaiStream.byteArrayCompare(this._unnamed9, [0]) == 0))) {
                     throw new KaitaiStream.ValidationNotEqualError([0], this._unnamed9, this._io, "/types/op/seq/9");
@@ -284,22 +284,22 @@ var Acorn = (function() {
             if (!((KaitaiStream.byteArrayCompare(this._unnamed10, [0]) == 0))) {
                 throw new KaitaiStream.ValidationNotEqualError([0], this._unnamed10, this._io, "/types/op/seq/10");
             }
-            if ( ((this.kind == Acorn.OpKind.LOAD_LOCAL) || (this.kind == Acorn.OpKind.CALL) || (this.kind == Acorn.OpKind.MAKE_PATTERN) || (this.kind == Acorn.OpKind.ACCESS) || (this.kind == Acorn.OpKind.UPDATE)) ) {
+            if ( ((this.kind == Binar.OpKind.LOAD_LOCAL) || (this.kind == Binar.OpKind.CALL) || (this.kind == Binar.OpKind.MAKE_PATTERN) || (this.kind == Binar.OpKind.ACCESS) || (this.kind == Binar.OpKind.UPDATE)) ) {
                 this.aStringHash = this._io.readU4le();
             }
-            if (this.kind == Acorn.OpKind.LOAD_GLOBAL) {
+            if (this.kind == Binar.OpKind.LOAD_GLOBAL) {
                 this.aPointer = this._io.readU4le();
             }
-            if ( ((this.kind == Acorn.OpKind.JUMP) || (this.kind == Acorn.OpKind.MATCH)) ) {
+            if ( ((this.kind == Binar.OpKind.JUMP) || (this.kind == Binar.OpKind.MATCH)) ) {
                 this.aJumpDelta = this._io.readU4le();
             }
-            if (this.kind == Acorn.OpKind.MAKE_OBJECT) {
+            if (this.kind == Binar.OpKind.MAKE_OBJECT) {
                 this.aNumItems = this._io.readU4le();
             }
-            if (this.kind == Acorn.OpKind.LOAD_CONST) {
+            if (this.kind == Binar.OpKind.LOAD_CONST) {
                 this.aConstPointerValueHash = this._io.readU4le();
             }
-            if ( ((this.kind == Acorn.OpKind.APPLY) || (this.kind == Acorn.OpKind.SWAP_POP)) ) {
+            if ( ((this.kind == Binar.OpKind.APPLY) || (this.kind == Binar.OpKind.SWAP_POP)) ) {
                 this._unnamed16 = this._io.readBytes(4);
                 if (!((KaitaiStream.byteArrayCompare(this._unnamed16, [0, 0, 0, 0]) == 0))) {
                     throw new KaitaiStream.ValidationNotEqualError([0, 0, 0, 0], this._unnamed16, this._io, "/types/op/seq/16");
@@ -310,7 +310,7 @@ var Acorn = (function() {
         return Op;
     })();
 
-    return Acorn;
+    return Binar;
 })();
 
-export default Acorn;
+export default Binar;

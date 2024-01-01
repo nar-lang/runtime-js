@@ -1,25 +1,25 @@
 "use strict";
 
-import Acorn from "./acorn.js";
+import Binar from "./binar.js";
 import KaitaiStream from "./KaitaiStream.js";
 
 const $DEBUG = false;
 
-export default class OakRuntime {
+export default class NarRuntime {
     /**
-     * @param {ArrayBuffer} arrayBuffer ArrayBuffer to read acorn from.
+     * @param {ArrayBuffer} arrayBuffer ArrayBuffer to read binar from.
      * @param {?Number} arrayBufferOffset Offset from arrayBuffer beginning.
      */
     constructor(arrayBuffer, arrayBufferOffset = 0) {
-        this._acorn = new Acorn(new KaitaiStream(arrayBuffer, arrayBufferOffset));
+        this._binar = new Binar(new KaitaiStream(arrayBuffer, arrayBufferOffset));
         this._natives = {};
         this._cachedExpressions = {};
         this._closureIndex = 0n;
-        this._exportsMap = this._acorn.exports.reduce((acc, x) => {
+        this._exportsMap = this._binar.exports.reduce((acc, x) => {
             acc[x.name.value] = x.address;
             return acc;
         }, {});
-        for (let fn of this._acorn.funcs) {
+        for (let fn of this._binar.funcs) {
             fn.kind = INSTANCE_KIND_FUNC;
         }
         this.externalSelfContext = this;
@@ -44,7 +44,7 @@ export default class OakRuntime {
     INSTANCE_KIND_NATIVE = INSTANCE_KIND_NATIVE
 
     /**
-     * @param {String} moduleName Full module name, e.g. Oak.Core.Basics
+     * @param {String} moduleName Full module name, e.g. Nar.Core.Basics
      * @param {{[String]: function|Readonly<{}>}} definitions Map of native defined functions/constants
      */
     register(moduleName, definitions) {
@@ -177,7 +177,7 @@ export default class OakRuntime {
 
     /**
      * Returns qualifier definition identifier to use in execute method
-     * @param {String} module Full module name, like `Oak.Core.Basics`
+     * @param {String} module Full module name, like `Nar.Core.Basics`
      * @param {String} definition Definition name, like `identity`
      * @return {String}
      */
@@ -195,11 +195,11 @@ export default class OakRuntime {
         try {
             const fnIndex = this._exportsMap[qualifiedIdentifier];
             if (fnIndex === undefined) {
-                throw(`[oak] Definition '${qualifiedIdentifier}' is not exported by loaded binary`)
+                throw(`[] Definition '${qualifiedIdentifier}' is not exported by loaded binary`)
             }
-            const fn = this._acorn.funcs[fnIndex];
+            const fn = this._binar.funcs[fnIndex];
             if (args.length !== fn.numArgs) {
-                throw(`[oak] Function '${qualifiedIdentifier}' requires ${fn.numArgs} arguments, but ${args.length} given`);
+                throw(`[] Function '${qualifiedIdentifier}' requires ${fn.numArgs} arguments, but ${args.length} given`);
             }
             const objectStack = args.slice();
             this._executeFn(fn, objectStack, [], qualifiedIdentifier);
@@ -268,28 +268,28 @@ export default class OakRuntime {
             }
             const op = fn.ops[index];
             switch (op.kind) {
-                case Acorn.OpKind.LOAD_LOCAL: {
-                    const name = this._acorn.strings[op.aStringHash].value;
+                case Binar.OpKind.LOAD_LOCAL: {
+                    const name = this._binar.strings[op.aStringHash].value;
                     const local = locals[name];
                     if ($DEBUG) {
                         if (!name) {
-                            throw(`[oak:debug] Local variable name is empty`);
+                            throw(`[:debug] Local variable name is empty`);
                         }
                         if (!local) {
-                            throw(`[oak:debug] Local variable '${name}' is not defined`);
+                            throw(`[:debug] Local variable '${name}' is not defined`);
                         }
                         if (!local.kind) {
-                            throw(`[oak:debug] Local variable '${name}' in not wrapped`);
+                            throw(`[:debug] Local variable '${name}' in not wrapped`);
                         }
                     }
                     objectStack.push(local);
                     break
                 }
-                case Acorn.OpKind.LOAD_GLOBAL: {
-                    const glob = this._acorn.funcs[op.aPointer];
+                case Binar.OpKind.LOAD_GLOBAL: {
+                    const glob = this._binar.funcs[op.aPointer];
                     if ($DEBUG) {
                         if (!glob) {
-                            throw(`[oak:debug] Global function '${op.aPointer}' is not defined`);
+                            throw(`[:debug] Global function '${op.aPointer}' is not defined`);
                         } else {
                             glob.$DebugName = Object.keys(this._exportsMap).filter(k => this._exportsMap[k] === op.aPointer)[0];
                             glob.$DebugPointer = op.aPointer;
@@ -301,7 +301,7 @@ export default class OakRuntime {
                             this._executeFn(glob, objectStack, patternStack);
                             if ($DEBUG) {
                                 if (objectStack.length === 0) {
-                                    throw(`[oak:debug] Stack is empty after '${glob.$DebugName}'`);
+                                    throw(`[:debug] Stack is empty after '${glob.$DebugName}'`);
                                 }
                             }
                             this._cachedExpressions[op.aPointer] = objectStack[objectStack.length - 1];
@@ -313,49 +313,49 @@ export default class OakRuntime {
                     }
                     break
                 }
-                case Acorn.OpKind.LOAD_CONST: {
+                case Binar.OpKind.LOAD_CONST: {
                     let stack;
                     switch (op.bStackKind) {
-                        case Acorn.StackKind.OBJECT: {
+                        case Binar.StackKind.OBJECT: {
                             stack = objectStack;
                             break
                         }
-                        case Acorn.StackKind.PATTERN: {
+                        case Binar.StackKind.PATTERN: {
                             stack = patternStack;
                             break
                         }
                     }
                     switch (op.cConstKind) {
-                        case Acorn.ConstKind.UNIT: {
+                        case Binar.ConstKind.UNIT: {
                             stack.push(this.unit());
                             break
                         }
-                        case Acorn.ConstKind.CHAR: {
+                        case Binar.ConstKind.CHAR: {
                             stack.push(this.char(op.aConstPointerValueHash));
                             break
                         }
-                        case Acorn.ConstKind.INT: {
-                            const c = this._acorn.consts[op.aConstPointerValueHash];
+                        case Binar.ConstKind.INT: {
+                            const c = this._binar.consts[op.aConstPointerValueHash];
                             stack.push(this.int(c.intValue));
                             break
                         }
-                        case Acorn.ConstKind.FLOAT: {
-                            const c = this._acorn.consts[op.aConstPointerValueHash];
+                        case Binar.ConstKind.FLOAT: {
+                            const c = this._binar.consts[op.aConstPointerValueHash];
                             stack.push(this.float(c.floatValue));
                             break
                         }
-                        case Acorn.ConstKind.STRING: {
-                            const c = this._acorn.strings[op.aConstPointerValueHash].value;
+                        case Binar.ConstKind.STRING: {
+                            const c = this._binar.strings[op.aConstPointerValueHash].value;
                             stack.push(this.string(c));
                             break
                         }
                     }
                     break
                 }
-                case Acorn.OpKind.APPLY: {
+                case Binar.OpKind.APPLY: {
                     if ($DEBUG) {
                         if (objectStack.length === 0) {
-                            throw(`[oak:debug] Stack is empty when applying function`);
+                            throw(`[:debug] Stack is empty when applying function`);
                         }
                     }
                     const afn = objectStack.pop();
@@ -377,7 +377,7 @@ export default class OakRuntime {
                     } else {
                         if ($DEBUG) {
                             if (objectStack.length < n) {
-                                throw(`[oak:debug] Stack is not big enough to curry '${afn.$DebugName}'`);
+                                throw(`[:debug] Stack is not big enough to curry '${afn.$DebugName}'`);
                             }
                         }
                         const args = objectStack.slice(start);
@@ -393,19 +393,19 @@ export default class OakRuntime {
                     }
                     break
                 }
-                case Acorn.OpKind.CALL: {
-                    const name = this._acorn.strings[op.aStringHash].value;
+                case Binar.OpKind.CALL: {
+                    const name = this._binar.strings[op.aStringHash].value;
                     if ($DEBUG) {
                         if (!name) {
-                            throw(`[oak:debug] Native function name is empty`);
+                            throw(`[:debug] Native function name is empty`);
                         }
                         if (objectStack.length < op.bNumArgs) {
-                            throw(`[oak:debug] Stack is not big enough to call '${name}'`);
+                            throw(`[:debug] Stack is not big enough to call '${name}'`);
                         }
                     }
                     const cfn = this._natives[name];
                     if (cfn === undefined) {
-                        throw(`[oak] Native function '${name}' is not registered`);
+                        throw(`[] Native function '${name}' is not registered`);
                     }
                     if (op.bNumArgs === 0) {
                         objectStack.push(cfn);
@@ -419,33 +419,33 @@ export default class OakRuntime {
                     }
                     break
                 }
-                case Acorn.OpKind.MATCH: {
+                case Binar.OpKind.MATCH: {
                     const pattern = patternStack.pop();
                     const obj = objectStack[objectStack.length - 1];
                     if (!this._match(pattern, obj, locals)) {
                         if ($DEBUG) {
                             if (op.aJumpDelta === 0) {
-                                throw(`[oak:debug] Pattern match fail with jump delta 0 should not happen`);
+                                throw(`[:debug] Pattern match fail with jump delta 0 should not happen`);
                             }
                         }
                         index += op.aJumpDelta;
                     }
                     break
                 }
-                case Acorn.OpKind.JUMP: {
+                case Binar.OpKind.JUMP: {
                     index += op.aJumpDelta;
                     break
                 }
-                case Acorn.OpKind.MAKE_OBJECT: {
+                case Binar.OpKind.MAKE_OBJECT: {
                     switch (op.bObjectKind) {
-                        case Acorn.ObjectKind.LIST: {
+                        case Binar.ObjectKind.LIST: {
                             if (0 === op.aNumItems) {
                                 objectStack.push(listItem())
                             } else {
                                 const n = objectStack.length;
                                 if ($DEBUG) {
                                     if (n < op.aNumItems) {
-                                        throw(`[oak:debug] Stack is not big enough to make list with ${op.aNumItems} items`);
+                                        throw(`[:debug] Stack is not big enough to make list with ${op.aNumItems} items`);
                                     }
                                 }
                                 const start = n - op.aNumItems;
@@ -458,10 +458,10 @@ export default class OakRuntime {
                             }
                             break
                         }
-                        case Acorn.ObjectKind.TUPLE: {
+                        case Binar.ObjectKind.TUPLE: {
                             if ($DEBUG) {
                                 if (objectStack.length < op.aNumItems) {
-                                    throw(`[oak:debug] Stack is not big enough to make tuple with ${op.aNumItems} items`);
+                                    throw(`[:debug] Stack is not big enough to make tuple with ${op.aNumItems} items`);
                                 }
                             }
                             const start = objectStack.length - op.aNumItems;
@@ -471,10 +471,10 @@ export default class OakRuntime {
                             objectStack.push(tuple);
                             break
                         }
-                        case Acorn.ObjectKind.RECORD: {
+                        case Binar.ObjectKind.RECORD: {
                             if ($DEBUG) {
                                 if (objectStack.length < op.aNumItems) {
-                                    throw(`[oak:debug] Stack is not big enough to make record with ${op.aNumItems} items`);
+                                    throw(`[:debug] Stack is not big enough to make record with ${op.aNumItems} items`);
                                 }
                             }
                             if (0 === op.aNumItems) {
@@ -483,7 +483,7 @@ export default class OakRuntime {
                                 const n = objectStack.length;
                                 if ($DEBUG) {
                                     if (n < op.aNumItems * 2) {
-                                        throw(`[oak:debug] Stack is not big enough to make record with ${op.aNumItems} fields`);
+                                        throw(`[:debug] Stack is not big enough to make record with ${op.aNumItems} fields`);
                                     }
                                 }
 
@@ -498,10 +498,10 @@ export default class OakRuntime {
                             }
                             break
                         }
-                        case Acorn.ObjectKind.DATA: {
+                        case Binar.ObjectKind.DATA: {
                             if ($DEBUG) {
                                 if (objectStack.length === 0) {
-                                    throw(`[oak:debug] Stack is empty when making data option`);
+                                    throw(`[:debug] Stack is empty when making data option`);
                                 }
                             }
                             const objName = objectStack.pop();
@@ -509,7 +509,7 @@ export default class OakRuntime {
                             const start = objectStack.length - op.aNumItems;
                             if ($DEBUG) {
                                 if (objectStack.length < op.aNumItems) {
-                                    throw(`[oak:debug] Stack is not big enough to make data with ${op.aNumItems} items`);
+                                    throw(`[:debug] Stack is not big enough to make data with ${op.aNumItems} items`);
                                 }
                             }
                             const items = objectStack.slice(start);
@@ -521,99 +521,99 @@ export default class OakRuntime {
                     }
                     break
                 }
-                case Acorn.OpKind.MAKE_PATTERN: {
+                case Binar.OpKind.MAKE_PATTERN: {
                     let name = undefined;
                     let items = undefined;
                     switch (op.bPatternKind) {
-                        case Acorn.PatternKind.ALIAS: {
-                            name = this._acorn.strings[op.aStringHash].value;
+                        case Binar.PatternKind.ALIAS: {
+                            name = this._binar.strings[op.aStringHash].value;
                             if ($DEBUG) {
                                 if (!name) {
-                                    throw(`[oak:debug] Pattern alias name is empty`);
+                                    throw(`[:debug] Pattern alias name is empty`);
                                 }
                                 if (patternStack.length === 0) {
-                                    throw(`[oak:debug] Stack is empty when making pattern alias`);
+                                    throw(`[:debug] Stack is empty when making pattern alias`);
                                 }
                             }
                             items = [patternStack.pop()];
                             break;
                         }
-                        case Acorn.PatternKind.ANY: {
+                        case Binar.PatternKind.ANY: {
                             break;
                         }
-                        case Acorn.PatternKind.CONS: {
+                        case Binar.PatternKind.CONS: {
                             if ($DEBUG) {
                                 if (patternStack.length < 2) {
-                                    throw(`[oak:debug] Stack is not big enough to make pattern cons`);
+                                    throw(`[:debug] Stack is not big enough to make pattern cons`);
                                 }
                             }
                             items = [patternStack.pop(), patternStack.pop()];
                             break;
                         }
-                        case Acorn.PatternKind.CONST: {
+                        case Binar.PatternKind.CONST: {
                             if ($DEBUG) {
                                 if (patternStack.length === 0) {
-                                    throw(`[oak:debug] Stack is empty when making pattern const`);
+                                    throw(`[:debug] Stack is empty when making pattern const`);
                                 }
                             }
                             items = [patternStack.pop()];
                             break;
                         }
-                        case Acorn.PatternKind.DATA_OPTION: {
-                            name = this._acorn.strings[op.aStringHash].value;
+                        case Binar.PatternKind.DATA_OPTION: {
+                            name = this._binar.strings[op.aStringHash].value;
                             const n = op.cNumNested;
                             const start = patternStack.length - n;
                             if ($DEBUG) {
                                 if (!name) {
-                                    throw(`[oak:debug] Pattern data option name is empty`);
+                                    throw(`[:debug] Pattern data option name is empty`);
                                 }
                                 if (patternStack.length < n) {
-                                    throw(`[oak:debug] Stack is not big enough to make pattern data option with ${n} items`);
+                                    throw(`[:debug] Stack is not big enough to make pattern data option with ${n} items`);
                                 }
                             }
                             items = patternStack.slice(start);
                             patternStack.splice(start);
                             break;
                         }
-                        case Acorn.PatternKind.LIST: {
+                        case Binar.PatternKind.LIST: {
                             const n = op.cNumNested;
                             const start = patternStack.length - n;
                             if ($DEBUG) {
                                 if (patternStack.length < n) {
-                                    throw(`[oak:debug] Stack is not big enough to make pattern list with ${n} items`);
+                                    throw(`[:debug] Stack is not big enough to make pattern list with ${n} items`);
                                 }
                             }
                             items = patternStack.slice(start);
                             patternStack.splice(start);
                             break;
                         }
-                        case Acorn.PatternKind.NAMED: {
-                            name = this._acorn.strings[op.aStringHash].value;
+                        case Binar.PatternKind.NAMED: {
+                            name = this._binar.strings[op.aStringHash].value;
                             if ($DEBUG) {
                                 if (!name) {
-                                    throw(`[oak:debug] Pattern named name is empty`);
+                                    throw(`[:debug] Pattern named name is empty`);
                                 }
                             }
                             break;
                         }
-                        case Acorn.PatternKind.RECORD: {
+                        case Binar.PatternKind.RECORD: {
                             const n = op.cNumNested;
                             const start = patternStack.length - n;
                             if ($DEBUG) {
                                 if (patternStack.length < n) {
-                                    throw(`[oak:debug] Stack is not big enough to make pattern record with ${n} items`);
+                                    throw(`[:debug] Stack is not big enough to make pattern record with ${n} items`);
                                 }
                             }
                             items = patternStack.slice(start).map(unwrap);
                             patternStack.splice(start);
                             break;
                         }
-                        case Acorn.PatternKind.TUPLE: {
+                        case Binar.PatternKind.TUPLE: {
                             const n = op.cNumNested;
                             const start = patternStack.length - n;
                             if ($DEBUG) {
                                 if (patternStack.length < n) {
-                                    throw(`[oak:debug] Stack is not big enough to make pattern tuple with ${n} items`);
+                                    throw(`[:debug] Stack is not big enough to make pattern tuple with ${n} items`);
                                 }
                             }
                             items = patternStack.slice(start);
@@ -625,14 +625,14 @@ export default class OakRuntime {
                     patternStack.push(pattern);
                     break
                 }
-                case Acorn.OpKind.ACCESS: {
-                    const name = this._acorn.strings[op.aStringHash].value;
+                case Binar.OpKind.ACCESS: {
+                    const name = this._binar.strings[op.aStringHash].value;
                     if ($DEBUG) {
                         if (!name) {
-                            throw(`[oak:debug] Field name is empty`);
+                            throw(`[:debug] Field name is empty`);
                         }
                         if (objectStack.length === 0) {
-                            throw(`[oak:debug] Stack is empty when accessing field`);
+                            throw(`[:debug] Stack is empty when accessing field`);
                         }
                     }
                     const rec = objectStack.pop();
@@ -640,14 +640,14 @@ export default class OakRuntime {
                     objectStack.push(field);
                     break
                 }
-                case Acorn.OpKind.UPDATE: {
-                    const name = this._acorn.strings[op.aStringHash].value;
+                case Binar.OpKind.UPDATE: {
+                    const name = this._binar.strings[op.aStringHash].value;
                     if ($DEBUG) {
                         if (!name) {
-                            throw(`[oak:debug] Field name is empty`);
+                            throw(`[:debug] Field name is empty`);
                         }
                         if (objectStack.length < 2) {
-                            throw(`[oak:debug] Stack is not big enough to update field`);
+                            throw(`[:debug] Stack is not big enough to update field`);
                         }
                     }
                     const value = objectStack.pop();
@@ -656,18 +656,18 @@ export default class OakRuntime {
                     objectStack.push(updated);
                     break
                 }
-                case Acorn.OpKind.SWAP_POP: {
-                    if (op.bSwapPopMode === Acorn.SwapPopMode.BOTH) {
+                case Binar.OpKind.SWAP_POP: {
+                    if (op.bSwapPopMode === Binar.SwapPopMode.BOTH) {
                         if ($DEBUG) {
                             if (objectStack.length < 2) {
-                                throw(`[oak:debug] Stack is not big enough to swap-pop (both)`);
+                                throw(`[:debug] Stack is not big enough to swap-pop (both)`);
                             }
                         }
                         objectStack.splice(objectStack.length - 2, 1);
                     } else {
                         if ($DEBUG) {
                             if (objectStack.length === 0) {
-                                throw(`[oak:debug] Stack is not big enough to swap-pop (pop)`);
+                                throw(`[:debug] Stack is not big enough to swap-pop (pop)`);
                             }
                         }
                         objectStack.pop();
@@ -685,22 +685,22 @@ export default class OakRuntime {
 
     _match(pattern, obj, locals) {
         switch (pattern.kind) {
-            case Acorn.PatternKind.ALIAS: {
+            case Binar.PatternKind.ALIAS: {
                 locals[pattern.name] = obj;
                 if ($DEBUG) {
                     if (pattern.items.length !== 1) {
-                        throw(`[oak:debug] Alias pattern should have exactly one item`);
+                        throw(`[:debug] Alias pattern should have exactly one item`);
                     }
                 }
                 return this._match(pattern.items[0], obj, locals);
             }
-            case Acorn.PatternKind.ANY: {
+            case Binar.PatternKind.ANY: {
                 return true;
             }
-            case Acorn.PatternKind.CONS: {
+            case Binar.PatternKind.CONS: {
                 if ($DEBUG) {
                     if (pattern.items.length !== 2) {
-                        throw(`[oak:debug] Cons pattern should have exactly two items`);
+                        throw(`[:debug] Cons pattern should have exactly two items`);
                     }
                 }
                 let matched = obj.kind === INSTANCE_KIND_LIST && obj.value !== undefined;
@@ -708,15 +708,15 @@ export default class OakRuntime {
                 matched &= this._match(pattern.items[1], (obj.next === undefined ? listItem() : obj.next), locals);
                 return matched;
             }
-            case Acorn.PatternKind.CONST: {
+            case Binar.PatternKind.CONST: {
                 if ($DEBUG) {
                     if (pattern.items.length !== 1) {
-                        throw(`[oak:debug] Const pattern should have exactly one item`);
+                        throw(`[:debug] Const pattern should have exactly one item`);
                     }
                 }
                 return constEqual(obj, pattern.items[0]);
             }
-            case Acorn.PatternKind.DATA_OPTION: {
+            case Binar.PatternKind.DATA_OPTION: {
                 const olen = obj.values && obj.values.length || 0;
                 const plen = pattern.items && pattern.items.length || 0;
                 let matched = obj.kind === INSTANCE_KIND_OPTION &&
@@ -727,7 +727,7 @@ export default class OakRuntime {
                 }
                 return matched;
             }
-            case Acorn.PatternKind.LIST: {
+            case Binar.PatternKind.LIST: {
                 let matched = obj.kind === INSTANCE_KIND_LIST;
                 for (let i = 0; i < pattern.items.length && matched; i++) {
                     matched &= obj !== undefined &&
@@ -738,11 +738,11 @@ export default class OakRuntime {
                 matched &= obj === undefined || obj.value === undefined;
                 return matched;
             }
-            case Acorn.PatternKind.NAMED: {
+            case Binar.PatternKind.NAMED: {
                 locals[pattern.name] = obj;
                 return true;
             }
-            case Acorn.PatternKind.RECORD: {
+            case Binar.PatternKind.RECORD: {
                 let matched = obj.kind === INSTANCE_KIND_RECORD;
                 for (let i = 0; i < pattern.items.length && matched; i++) {
                     const name = pattern.items[i];
@@ -752,12 +752,12 @@ export default class OakRuntime {
                 }
                 return matched;
             }
-            case Acorn.PatternKind.TUPLE: {
+            case Binar.PatternKind.TUPLE: {
                 if ($DEBUG) {
                     const pl = pattern.items && pattern.items.length || 0;
                     const vl = obj.value && obj.value.length || 0;
                     if (pl !== vl) {
-                        throw(`[oak:debug] Tuple pattern mismatch object items length`);
+                        throw(`[:debug] Tuple pattern mismatch object items length`);
                     }
                 }
                 let matched = obj.kind === INSTANCE_KIND_TUPLE;
@@ -792,8 +792,8 @@ const INSTANCE_KIND_OPTION = 9
 const INSTANCE_KIND_FUNC = 10
 const INSTANCE_KIND_NATIVE = 11
 
-const _True = option(qualifierIdentifier("Oak.Core.Basics", "Bool"), "True");
-const _False = option(qualifierIdentifier("Oak.Core.Basics", "Bool"), "False");
+const _True = option(qualifierIdentifier("Nar.Core.Basics", "Bool"), "True");
+const _False = option(qualifierIdentifier("Nar.Core.Basics", "Bool"), "False");
 
 function native(x) {
     return Object.freeze({kind: INSTANCE_KIND_NATIVE, value: x});
@@ -822,7 +822,7 @@ function wrap(value) {
     if (isNaN(value)) {
         return float(value)
     }
-    throw "given object cannot be wrapped and used in oak code";
+    throw "given object cannot be wrapped and used in  code";
 }
 
 function unwrap(x) {
@@ -896,7 +896,7 @@ function unit() {
 function char(value) {
     if ($DEBUG) {
         if (typeof (value) !== "number") {
-            throw(`[oak:debug] Char value is not number`);
+            throw(`[:debug] Char value is not number`);
         }
     }
     return Object.freeze({kind: INSTANCE_KIND_CHAR, value});
@@ -905,7 +905,7 @@ function char(value) {
 function int(value) {
     if ($DEBUG) {
         if (typeof (value) !== "number") {
-            throw(`[oak:debug] Int value is not number`);
+            throw(`[:debug] Int value is not number`);
         }
     }
     return Object.freeze({kind: INSTANCE_KIND_INT, value});
@@ -914,7 +914,7 @@ function int(value) {
 function float(value) {
     if ($DEBUG) {
         if (typeof (value) !== "number") {
-            throw(`[oak:debug] Float value is not number`);
+            throw(`[:debug] Float value is not number`);
         }
     }
     return Object.freeze({kind: INSTANCE_KIND_FLOAT, value});
@@ -923,7 +923,7 @@ function float(value) {
 function string(value) {
     if ($DEBUG) {
         if (typeof (value) !== "string") {
-            throw(`[oak:debug] String value is not string`);
+            throw(`[:debug] String value is not string`);
         }
     }
     return Object.freeze({kind: INSTANCE_KIND_STRING, value});
