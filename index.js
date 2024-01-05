@@ -44,7 +44,7 @@ export default class NarRuntime {
     INSTANCE_KIND_NATIVE = INSTANCE_KIND_NATIVE
 
     /**
-     * @param {String} moduleName Full module name, e.g. Nar.Core.Basics
+     * @param {String} moduleName Full module name, e.g. Nar.Base.Basics
      * @param {{[String]: function|Readonly<{}>}} definitions Map of native defined functions/constants
      */
     register(moduleName, definitions) {
@@ -177,7 +177,7 @@ export default class NarRuntime {
 
     /**
      * Returns qualifier definition identifier to use in execute method
-     * @param {String} module Full module name, like `Nar.Core.Basics`
+     * @param {String} module Full module name, like `Nar.Base.Basics`
      * @param {String} definition Definition name, like `identity`
      * @return {String}
      */
@@ -792,8 +792,8 @@ const INSTANCE_KIND_OPTION = 9
 const INSTANCE_KIND_FUNC = 10
 const INSTANCE_KIND_NATIVE = 11
 
-const _True = option(qualifierIdentifier("Nar.Core.Basics", "Bool"), "True");
-const _False = option(qualifierIdentifier("Nar.Core.Basics", "Bool"), "False");
+const _True = option(qualifierIdentifier("Nar.Base.Basics", "Bool"), "True");
+const _False = option(qualifierIdentifier("Nar.Base.Basics", "Bool"), "False");
 
 function native(x) {
     return Object.freeze({kind: INSTANCE_KIND_NATIVE, value: x});
